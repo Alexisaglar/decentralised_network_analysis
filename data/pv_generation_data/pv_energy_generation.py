@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from pvlib import pvsystem
 from datetime import datetime
-from parameters_pv import parameters
+from utils.parameters_pv import parameters
 
 series_panel = 5
 parallel_panel = 3 
@@ -12,8 +12,8 @@ PCE_ref_CFPV = 10
 #y=mx+b
 slope_2x_enhance = (-1/100)
 constant_2x_enhance = 20
-temperature_file = "temperature.csv"
-irradiance_file = "irradiance.csv"
+temperature_file = "data/meteorological_data/retrieved_data/temperature.csv"
+irradiance_file = "data/meteorological_data/retrieved_data/irradiance.csv"
 
 with open(f'{temperature_file}', newline='') as temperature_data, open(f'{irradiance_file}', newline='') as irradiance_data:
     irradiance = pd.read_csv(irradiance_data)
@@ -78,5 +78,5 @@ print(Total_PV)
 plt.plot(Total_PV['Irradiance'])
 plt.show()
 plt.plot(Total_PV.index, Total_PV[['P','P_CFPV']])
-Total_PV[['P','P_CFPV']].to_csv(f'Profile_June.csv') 
+Total_PV[['P','P_CFPV']].to_csv(f'data/meteorological_data/retrieved_data/Profile_June.csv') 
 plt.show()
