@@ -15,17 +15,19 @@ constant_2x_enhance = 20
 temperature_file = "data/meteorological_data/retrieved_data/temperature.csv"
 irradiance_file = "data/meteorological_data/retrieved_data/irradiance.csv"
 
-with open(f'{temperature_file}', newline='') as temperature_data, open(f'{irradiance_file}', newline='') as irradiance_data:
-    irradiance = pd.read_csv(irradiance_data)
-    irradiance['index_date'] = pd.to_datetime(irradiance['index_date'])
-    irradiance.set_index(irradiance['index_date'], inplace=True)
-  
-    temperature = pd.read_csv(temperature_data)
-    temperature['valid_time'] = pd.to_datetime(temperature['valid_time'])
-    temperature.set_index(temperature['valid_time'], inplace=True)
+def get_csv_data(temperature_file, irradiance_file):
+    with open(f'{temperature_file}', newline='') as temperature_data, open(f'{irradiance_file}', newline='') as irradiance_data:
+        irradiance = pd.read_csv(irradiance_data)
+        irradiance['index_date'] = pd.to_datetime(irradiance['index_date'])
+        irradiance.set_index(irradiance['index_date'], inplace=True)
+    
+        temperature = pd.read_csv(temperature_data)
+        temperature['valid_time'] = pd.to_datetime(temperature['valid_time'])
+        temperature.set_index(temperature['valid_time'], inplace=True)
 
-irradiance = irradiance.loc['2023-01-29']
-temperature = temperature.loc['2023-01-29']
+    irradiance = irradiance.loc['2023-01-29']
+    temperature = temperature.loc['2023-01-29']
+    return irradiance, temperature
 
 def pv_generation(irradiance, temperature, series_panel, parallel_panel, PCE_ref_CFPV):
     IL, I0, Rs, Rsh, nNsVth = pvsystem.calcparams_desoto(
@@ -67,6 +69,7 @@ def pv_generation(irradiance, temperature, series_panel, parallel_panel, PCE_ref
     })
     return Total_PV
 
+irradiance, temperature = get_csv_data(temperature_file, irradiance_file)
 Total_PV = pv_generation(irradiance, temperature, series_panel, parallel_panel, PCE_ref_CFPV)
 
 Total_PV['P'] = Total_PV['I']*Total_PV['V']
@@ -78,5 +81,8 @@ print(Total_PV)
 plt.plot(Total_PV['Irradiance'])
 plt.show()
 plt.plot(Total_PV.index, Total_PV[['P','P_CFPV']])
-Total_PV[['P','P_CFPV']].to_csv(f'data/meteorological_data/retrieved_data/Profile_June.csv') 
+Total_PV[['P','P_CFPV']].to_csv(f'data/pv_generation_data/pv_profiles/profile_january.csv') 
 plt.show()
+
+if __name__ == "__main__":
+    print("PV energy generation is being calculated with temperature and irradiance given")

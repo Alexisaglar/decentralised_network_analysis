@@ -107,3 +107,6 @@ def retrieve_data():
         irradiance = irradiance[['DHI', 'GHI']]*60
 
     irradiance.to_csv('data/meteorological_data/retrieved_data/irradiance.csv')
+
+if __name__ == "__main__":
+    print("Temperature and irradiance is being retrieved from Copernicus databases")

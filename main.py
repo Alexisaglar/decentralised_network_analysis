@@ -2,6 +2,9 @@
 from data.meteorological_data.copernicus_data import retrieve_data
 from data.pv_generation_data.pv_energy_generation import pv_generation
 from data.network_data.bwfw_sweep import f_b_sweep
+# import data.meteorological_data
+# import data.pv_generation_data
+# import data.network_data
 
 def main():
     # Call functions from different scripts
