@@ -25,8 +25,8 @@ def get_csv_data(temperature_file, irradiance_file):
         temperature['valid_time'] = pd.to_datetime(temperature['valid_time'])
         temperature.set_index(temperature['valid_time'], inplace=True)
 
-    irradiance = irradiance.loc['2023-01-29']
-    temperature = temperature.loc['2023-01-29']
+    # irradiance = irradiance.loc['2023-01-29']
+    # temperature = temperature.loc['2023-01-29']
     return irradiance, temperature
 
 def pv_generation(irradiance, temperature, series_panel, parallel_panel, PCE_ref_CFPV):
@@ -84,5 +84,5 @@ plt.plot(Total_PV.index, Total_PV[['P','P_CFPV']])
 Total_PV[['P','P_CFPV']].to_csv(f'data/pv_generation_data/pv_profiles/profile_january.csv') 
 plt.show()
 
-if __name__ == "__main__":
-    print("PV energy generation is being calculated with temperature and irradiance given")
+# if __name__ == "__main__":
+#     print("PV energy generation is being calculated with temperature and irradiance given")
