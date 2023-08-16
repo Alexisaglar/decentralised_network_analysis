@@ -10,19 +10,30 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import glob
 
+self_consumption_file = 'data/plots/self_consumption_january.png'
 battery_capacity = 10000
 SoC_battery = 40
 
+file_path = glob.glob('data/network_data/network/load_profiles/*.csv')
+combined_load_profile = pd.concat((pd.read_csv(f, sep=',') for f in file_path), ignore_index=True)
+combined_load_profile = pd.DataFrame(combined_load_profile)
+combined_load_profile['mult'] = combined_load_profile['mult']*1000
+
+
+print(combined_load_profile)
+
+plt.plot(combined_load_profile['mult'])
+plt.savefig('data/plots/combined_load_profile.png')
+plt.show()
 
 with open('data/network_data/network/Load_profile_1.csv', newline='') as loadprofile_file, open('data/pv_generation_data/pv_profiles/profile_january.csv', newline='') as pvprofile_file:
     pv_profile = pd.read_csv(pvprofile_file)
     load_profile = pd.read_csv(loadprofile_file)
     load_profile['mult'] = load_profile['mult']*1000
- 
-print(load_profile)
-print(pv_profile)
 
+#CFPV 
 battery_energy = pd.DataFrame(np.zeros(1440), columns=['energy'])
 battery_energy['energy'].iloc[0] = battery_capacity*(SoC_battery/100)
 
@@ -49,6 +60,7 @@ for i in range(len(pv_profile)-1):
     
 plt.plot(battery_energy)
 
+#Silicon 
 battery_energy = pd.DataFrame(np.zeros(1440), columns=['energy'])
 battery_energy['energy'].iloc[0] = battery_capacity*(SoC_battery/100)
 for i in range(len(pv_profile)-1):
@@ -70,16 +82,15 @@ for i in range(len(pv_profile)-1):
             if battery_energy['energy'].iloc[i+1] > battery_capacity:
                 battery_energy['energy'].iloc[i+1] = battery_capacity
 
+
+
+
 plt.plot(battery_energy)
-
-
-
-
-
-#plt.plot(grid_consumption)
-#plt.plot(battery_energy)
+plt.plot(grid_consumption)
+plt.plot(battery_energy)
 plt.plot(consumption)
 plt.plot(load_profile['mult'])
 plt.plot(pv_profile[['P','P_CFPV']])
+plt.savefig(f'{self_consumption_file}')
 plt.show()
     

@@ -1,0 +1,5 @@
+*.grib
+*.csv
+*.idx
+config.json
+#/data/network_data/network/load_profiles/*.csv

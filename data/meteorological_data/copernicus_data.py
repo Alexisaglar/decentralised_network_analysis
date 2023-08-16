@@ -10,7 +10,7 @@ kelvin_temperature = 273.15
 latitude = "56"
 longitude = "-1.6"
 altitude = "-999." #default as mentioned in lib
-date_period = '2023-01-01/2023-01-31'
+date_period = '2023-01-01/2023-02-01'
 resolution = "1minute"
 
 def get_database_info(database):
@@ -110,3 +110,4 @@ def retrieve_data():
 
 if __name__ == "__main__":
     print("Temperature and irradiance is being retrieved from Copernicus databases")
+    retrieve_data()
