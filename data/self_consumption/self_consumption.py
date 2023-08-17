@@ -28,8 +28,8 @@ def plot_graph(df, label, file_name):
     for i in range(len(df)):
         plt.plot(df[i], label=label[i])
     plt.legend()
-    plt.show()
     plt.savefig(f'data/plots/{file_name}.png')
+    plt.show()
 
 with open('data/network_data/network/Load_profile_1.csv', newline='') as loadprofile_file, open('data/pv_generation_data/pv_profiles/profile_january.csv', newline='') as pvprofile_file:
     pv_profile = pd.read_csv(pvprofile_file)
@@ -92,7 +92,7 @@ for i, _ in combined_load_profile.iterrows():
 
 
 
-plot_graph([combined_load_profile['mult']], ['Load'], ['combined_load'])
+plot_graph([combined_load_profile['mult']], ['Load'], 'combined_load')
 plot_graph([pv_profile['P'], pv_profile['P_CFPV']], ['P','P_CFPV'], 'PV_generation_january')
 plot_graph([battery_energy_p/100, battery_energy_cfpv/100], ['SoC P_battery', 'SoC CFPV_battery'], 'state_of_charge')
 plot_graph([combined_load_profile['mult'], grid_consumption_p*60, grid_consumption_cfpv*60], ['Load', 'P grid_consumption', 'CFPV grid_consumption'], 'grid_energy_consumption')
