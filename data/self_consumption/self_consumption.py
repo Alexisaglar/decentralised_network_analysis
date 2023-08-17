@@ -45,8 +45,7 @@ grid_consumption_cfpv = pd.DataFrame(np.zeros(len(combined_load_profile)), colum
 battery_energy_cfpv = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['energy'])
 battery_energy_cfpv['energy'][0] = battery_capacity*(SoC_battery/100)
 
-for i, _ in enumerate(combined_load_profile):
-    p_generated = pv_profile['P'][i]/60
+for i, _ in combined_load_profile.iterrows():
     cfpv_generated = pv_profile['P_CFPV'][i]/60
     consumption = combined_load_profile['mult'].iloc[i]/60
     
@@ -71,7 +70,7 @@ battery_energy_p = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['
 grid_consumption_p = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['consumption'])
 battery_energy_p['energy'][0] = battery_capacity*(SoC_battery/100)
 
-for i, _ in enumerate(combined_load_profile):
+for i, _ in combined_load_profile.iterrows():
     p_generated = pv_profile['P'][i]/60
     consumption = combined_load_profile['mult'][i]/60
     if consumption > p_generated:
