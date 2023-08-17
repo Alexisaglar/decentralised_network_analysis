@@ -24,11 +24,12 @@ combined_load_profile = pd.DataFrame(combined_load_profile)
 combined_load_profile['mult'] = combined_load_profile['mult']*1000
 
 
-print(combined_load_profile)
-
-plt.plot(combined_load_profile['mult'])
-plt.savefig('data/plots/combined_load_profile.png')
-plt.show()
+def plot_graph(df, label, file_name):
+    for i in range(len(df)):
+        plt.plot(df[i], label=label[i])
+    plt.legend()
+    plt.show()
+    plt.savefig(f'data/plots/{file_name}.png')
 
 with open('data/network_data/network/Load_profile_1.csv', newline='') as loadprofile_file, open('data/pv_generation_data/pv_profiles/profile_january.csv', newline='') as pvprofile_file:
     pv_profile = pd.read_csv(pvprofile_file)
@@ -42,77 +43,63 @@ with open('data/network_data/network/Load_profile_1.csv', newline='') as loadpro
 #CFPV 
 grid_consumption_cfpv = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['consumption'])
 battery_energy_cfpv = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['energy'])
-battery_energy_cfpv['energy'].iloc[0] = battery_capacity*(SoC_battery/100)
+battery_energy_cfpv['energy'][0] = battery_capacity*(SoC_battery/100)
 
-for i in range(len(combined_load_profile)-1):
-    p_generated = pv_profile['P'].iloc[i]/60
-    cfpv_generated = pv_profile['P_CFPV'].iloc[i]/60
+for i, _ in enumerate(combined_load_profile):
+    p_generated = pv_profile['P'][i]/60
+    cfpv_generated = pv_profile['P_CFPV'][i]/60
     consumption = combined_load_profile['mult'].iloc[i]/60
     
     if consumption > cfpv_generated:
         energy_demand_battery = (consumption - cfpv_generated)
 
-        if battery_energy_cfpv['energy'].iloc[i] > energy_demand_battery:
-            battery_energy_cfpv['energy'].iloc[i+1] = battery_energy_cfpv['energy'].iloc[i] - energy_demand_battery
+        if battery_energy_cfpv['energy'][i] > energy_demand_battery:
+            battery_energy_cfpv['energy'][i+1] = battery_energy_cfpv['energy'][i] - energy_demand_battery
 
         else:
-            grid_consumption_cfpv['consumption'][i] = energy_demand_battery - battery_energy_cfpv['energy'].iloc[i]
-            battery_energy_cfpv['energy'].iloc[i+1] = 0
+            grid_consumption_cfpv['consumption'][i] = energy_demand_battery - battery_energy_cfpv['energy'][i]
+            battery_energy_cfpv['energy'][i+1] = 0
 
     else:
-        if battery_energy_cfpv['energy'].iloc[i] < battery_capacity:
-            battery_energy_cfpv['energy'].iloc[i+1] = battery_energy_cfpv['energy'].iloc[i] + (cfpv_generated-consumption)
-            if battery_energy_cfpv['energy'].iloc[i+1] > battery_capacity:
-                battery_energy_cfpv['energy'].iloc[i+1] = battery_capacity
+        if battery_energy_cfpv['energy'][i] < battery_capacity:
+            battery_energy_cfpv['energy'][i+1] = battery_energy_cfpv['energy'][i] + (cfpv_generated-consumption)
+            if battery_energy_cfpv['energy'][i+1] > battery_capacity:
+                battery_energy_cfpv['energy'][i+1] = battery_capacity
     
 #Silicon 
 battery_energy_p = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['energy'])
 grid_consumption_p = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['consumption'])
-battery_energy_p['energy'].iloc[0] = battery_capacity*(SoC_battery/100)
+battery_energy_p['energy'][0] = battery_capacity*(SoC_battery/100)
 
-for i in range(len(combined_load_profile)-1):
-    p_generated = pv_profile['P'].iloc[i]/60
-    consumption = combined_load_profile['mult'].iloc[i]/60
+for i, _ in enumerate(combined_load_profile):
+    p_generated = pv_profile['P'][i]/60
+    consumption = combined_load_profile['mult'][i]/60
     if consumption > p_generated:
         energy_demand_battery = (consumption - p_generated)
 
-        if battery_energy_p['energy'].iloc[i] > energy_demand_battery:
-            battery_energy_p['energy'].iloc[i+1] = battery_energy_p['energy'].iloc[i] - energy_demand_battery
+        if battery_energy_p['energy'][i] > energy_demand_battery:
+            battery_energy_p['energy'][i+1] = battery_energy_p['energy'][i] - energy_demand_battery
 
         else:
-            grid_consumption_p['consumption'][i] = energy_demand_battery - battery_energy_p['energy'].iloc[i]
-            battery_energy_p['energy'].iloc[i+1] = 0
+            grid_consumption_p['consumption'][i] = energy_demand_battery - battery_energy_p['energy'][i]
+            battery_energy_p['energy'][i+1] = 0
 
     else:
-        if battery_energy_p['energy'].iloc[i] < battery_capacity:
-            battery_energy_p['energy'].iloc[i+1] = battery_energy_p['energy'].iloc[i] + (p_generated-consumption)
-            if battery_energy_p['energy'].iloc[i+1] > battery_capacity:
-                battery_energy_p['energy'].iloc[i+1] = battery_capacity
+        if battery_energy_p['energy'][i] < battery_capacity:
+            battery_energy_p['energy'][i+1] = battery_energy_p['energy'][i] + (p_generated-consumption)
+            if battery_energy_p['energy'][i+1] > battery_capacity:
+                battery_energy_p['energy'][i+1] = battery_capacity
 
 
 
 
-#plt.plot(combined_load_profile['mult'])
-plt.plot(pv_profile['P'], label='P')
-plt.plot(pv_profile['P_CFPV'], label='P_CFPV')
-plt.legend()
-plt.savefig(f'{self_consumption_file}')
-plt.show()
-plt.plot((battery_energy_cfpv/100), label='cfpv_battery')
-plt.plot((battery_energy_p/100), label='p_battery')
-plt.show()
-print()
-plt.plot(combined_load_profile['mult'], label='load', color='blue')
-plt.plot(grid_consumption_p*60, label='P grid_consumption', color='red')
-plt.plot(grid_consumption_cfpv*60, label='CFPV grid_consumption', color='green')
-plt.show()
+plot_graph([combined_load_profile['mult']], ['Load'], ['combined_load'])
+plot_graph([pv_profile['P'], pv_profile['P_CFPV']], ['P','P_CFPV'], 'PV_generation_january')
+plot_graph([battery_energy_p/100, battery_energy_cfpv/100], ['SoC P_battery', 'SoC CFPV_battery'], 'state_of_charge')
+plot_graph([combined_load_profile['mult'], grid_consumption_p*60, grid_consumption_cfpv*60], ['Load', 'P grid_consumption', 'CFPV grid_consumption'], 'grid_energy_consumption')
 
 total_cfpv = grid_consumption_cfpv.sum()[0]
 total_p = grid_consumption_p.sum()[0]
-
 plt.bar(['cfpv consumption', 'p consumption'], [total_cfpv, total_p], color=['green', 'red'])
 plt.show()
 
-#plt.bar(total_cfpv, total_p, label=['cfpv consumption', 'p consumption'])
-plt.show()
-print(total_cfpv, total_p)
