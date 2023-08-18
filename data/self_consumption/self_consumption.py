@@ -43,6 +43,7 @@ with open('data/network_data/network/Load_profile_1.csv', newline='') as loadpro
 #CFPV 
 grid_consumption_cfpv = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['consumption'])
 battery_energy_cfpv = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['energy'])
+curtailment_cfpv = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['curtailment'])
 battery_energy_cfpv['energy'][0] = battery_capacity*(SoC_battery/100)
 
 for i, _ in combined_load_profile.iterrows():
@@ -63,11 +64,13 @@ for i, _ in combined_load_profile.iterrows():
         if battery_energy_cfpv['energy'][i] < battery_capacity:
             battery_energy_cfpv['energy'][i+1] = battery_energy_cfpv['energy'][i] + (cfpv_generated-consumption)
             if battery_energy_cfpv['energy'][i+1] > battery_capacity:
+                curtailment_cfpv[i] = battery_energy_cfpv['energy'][i+1] = battery_capacity 
                 battery_energy_cfpv['energy'][i+1] = battery_capacity
     
 #Silicon 
 battery_energy_p = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['energy'])
 grid_consumption_p = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['consumption'])
+curtailment_p = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['curtailment'])
 battery_energy_p['energy'][0] = battery_capacity*(SoC_battery/100)
 
 for i, _ in combined_load_profile.iterrows():
@@ -87,18 +90,36 @@ for i, _ in combined_load_profile.iterrows():
         if battery_energy_p['energy'][i] < battery_capacity:
             battery_energy_p['energy'][i+1] = battery_energy_p['energy'][i] + (p_generated-consumption)
             if battery_energy_p['energy'][i+1] > battery_capacity:
+                curtailment_p[i] = battery_energy_p['energy'][i+1] = battery_capacity 
                 battery_energy_p['energy'][i+1] = battery_capacity
 
 
 
-
 plot_graph([combined_load_profile['mult']], ['Load'], 'combined_load')
+plot_graph([curtailment_cfpv['curtailment'],curtailment_p['curtailment']], ['CFPV curtailment','P curtailment'], 'curtailment')
 plot_graph([pv_profile['P'], pv_profile['P_CFPV']], ['P','P_CFPV'], 'PV_generation_january')
 plot_graph([battery_energy_p/100, battery_energy_cfpv/100], ['SoC P_battery', 'SoC CFPV_battery'], 'state_of_charge')
 plot_graph([combined_load_profile['mult'], grid_consumption_p*60, grid_consumption_cfpv*60], ['Load', 'P grid_consumption', 'CFPV grid_consumption'], 'grid_energy_consumption')
 
+
 total_cfpv = grid_consumption_cfpv.sum()[0]
 total_p = grid_consumption_p.sum()[0]
-plt.bar(['cfpv consumption', 'p consumption'], [total_cfpv, total_p], color=['green', 'red'])
+plt.bar(['cfpv grid energy consumption', 'p grid energy consumption'], [total_cfpv, total_p], color=['green', 'red'])
 plt.show()
 
+
+sizes_cfpv = [grid_consumption_cfpv.sum()[0]/(combined_load_profile['mult'].sum()/60) * 100, ((combined_load_profile['mult'].sum()/60) - grid_consumption_cfpv.sum()[0])/ (combined_load_profile['mult'].sum()/60) *100]
+labels_cfpv = ['grid consumption','CFPV consumption']
+sizes_p= [grid_consumption_p.sum()[0]/(combined_load_profile['mult'].sum()/60) * 100, ((combined_load_profile['mult'].sum()/60) - grid_consumption_p.sum()[0])/ (combined_load_profile['mult'].sum()/60) *100]
+labels_p = ['grid consumption','P consumption']
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+ax1.pie(sizes_cfpv, labels=labels_cfpv, autopct='%1.1f%%', startangle=90)
+ax1.axis('equal')
+ax1.set_title('CFPV contribution to load consumption')
+ax2.pie(sizes_p, labels=labels_p, autopct='%1.1f%%', startangle=90)
+ax2.axis('equal')
+ax2.set_title('P contribution to load consumption')
+plt.tight_layout()
+plt.savefig('data/plots/pie_charts.png')
+plt.show()
