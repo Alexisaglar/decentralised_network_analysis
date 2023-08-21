@@ -81,7 +81,7 @@ print(Total_PV)
 plt.plot(Total_PV['Irradiance'])
 plt.show()
 plt.plot(Total_PV.index, Total_PV[['P','P_CFPV']])
-Total_PV[['P','P_CFPV']].to_csv(f'data/pv_generation_data/pv_profiles/profile_january.csv') 
+Total_PV[['P','P_CFPV']].to_csv(f'data/pv_generation_data/pv_profiles/profile_july.csv') 
 plt.show()
 
 # if __name__ == "__main__":

@@ -10,7 +10,7 @@ kelvin_temperature = 273.15
 latitude = "56"
 longitude = "-1.6"
 altitude = "-999." #default as mentioned in lib
-date_period = '2023-01-01/2023-02-01'
+date_period = '2023-07-01/2023-08-01'
 resolution = "1minute"
 
 def get_database_info(database):
@@ -31,7 +31,7 @@ def retrieve_data():
         {
             'variable': '2m_temperature',
             'year': '2023',
-            'month': '01',
+            'month': '07',
             'day': [
                 '01', '02', '03',
                 '04', '05', '06',

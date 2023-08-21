@@ -12,9 +12,9 @@ import numpy as np
 import pandas as pd
 import glob
 
-date_period = '2023-01-01/2023-02-01'
+date_period = '2023-07-01/2023-08-01'
 
-self_consumption_file = 'data/plots/self_consumption_january.png'
+self_consumption_file = 'data/plots/self_consumption_july.png'
 battery_capacity = 10000
 SoC_battery = 40
 
@@ -31,7 +31,7 @@ def plot_graph(df, label, file_name):
     plt.savefig(f'data/plots/{file_name}.png')
     plt.show()
 
-with open('data/network_data/network/Load_profile_1.csv', newline='') as loadprofile_file, open('data/pv_generation_data/pv_profiles/profile_january.csv', newline='') as pvprofile_file:
+with open('data/network_data/network/Load_profile_1.csv', newline='') as loadprofile_file, open('data/pv_generation_data/pv_profiles/profile_july.csv', newline='') as pvprofile_file:
     pv_profile = pd.read_csv(pvprofile_file)
     range_days = date_period.split('/')
     mask = (pv_profile['index_date'] >= range_days[0]) & (pv_profile['index_date'] <= range_days[1])
@@ -63,9 +63,9 @@ for i, _ in combined_load_profile.iterrows():
     else:
         if battery_energy_cfpv['energy'][i] < battery_capacity:
             battery_energy_cfpv['energy'][i+1] = battery_energy_cfpv['energy'][i] + (cfpv_generated-consumption)
-            if battery_energy_cfpv['energy'][i+1] > battery_capacity:
-                curtailment_cfpv[i] = battery_energy_cfpv['energy'][i+1] = battery_capacity 
-                battery_energy_cfpv['energy'][i+1] = battery_capacity
+        if battery_energy_cfpv['energy'][i] >= battery_capacity:
+            curtailment_cfpv['curtailment'][i] = battery_energy_cfpv['energy'][i] - battery_capacity 
+            battery_energy_cfpv['energy'][i+1] = battery_capacity
     
 #Silicon 
 battery_energy_p = pd.DataFrame(np.zeros(len(combined_load_profile)), columns=['energy'])
@@ -79,7 +79,7 @@ for i, _ in combined_load_profile.iterrows():
     if consumption > p_generated:
         energy_demand_battery = (consumption - p_generated)
 
-        if battery_energy_p['energy'][i] > energy_demand_battery:
+        if battery_energy_p['energy'][i] >= energy_demand_battery:
             battery_energy_p['energy'][i+1] = battery_energy_p['energy'][i] - energy_demand_battery
 
         else:
@@ -89,37 +89,37 @@ for i, _ in combined_load_profile.iterrows():
     else:
         if battery_energy_p['energy'][i] < battery_capacity:
             battery_energy_p['energy'][i+1] = battery_energy_p['energy'][i] + (p_generated-consumption)
-            if battery_energy_p['energy'][i+1] > battery_capacity:
-                curtailment_p[i] = battery_energy_p['energy'][i+1] = battery_capacity 
-                battery_energy_p['energy'][i+1] = battery_capacity
+        if battery_energy_p['energy'][i] >= battery_capacity:
+            curtailment_p['curtailment'][i] = battery_energy_p['energy'][i] - battery_capacity 
+            battery_energy_p['energy'][i+1] = battery_capacity
 
 
 
 plot_graph([combined_load_profile['mult']], ['Load'], 'combined_load')
-plot_graph([curtailment_cfpv['curtailment'],curtailment_p['curtailment']], ['CFPV curtailment','P curtailment'], 'curtailment')
-plot_graph([pv_profile['P'], pv_profile['P_CFPV']], ['P','P_CFPV'], 'PV_generation_january')
-plot_graph([battery_energy_p/100, battery_energy_cfpv/100], ['SoC P_battery', 'SoC CFPV_battery'], 'state_of_charge')
-plot_graph([combined_load_profile['mult'], grid_consumption_p*60, grid_consumption_cfpv*60], ['Load', 'P grid_consumption', 'CFPV grid_consumption'], 'grid_energy_consumption')
+plot_graph([curtailment_cfpv['curtailment'],curtailment_p['curtailment']], ['CFPV curtailment','Si-PV Curtailment'], 'curtailment_july')
+plot_graph([pv_profile['P'], pv_profile['P_CFPV']], ['Si-PV','CFPV'], 'PV_generation_july')
+plot_graph([battery_energy_p/100, battery_energy_cfpv/100], ['SoC Si-PV_battery', 'SoC CFPV_battery'], 'state_of_charge_july')
+plot_graph([combined_load_profile['mult'], grid_consumption_p*60, grid_consumption_cfpv*60], ['Load', 'Si-PV grid_consumption', 'CFPV grid_consumption'], 'grid_energy_consumption_july')
 
 
 total_cfpv = grid_consumption_cfpv.sum()[0]
 total_p = grid_consumption_p.sum()[0]
-plt.bar(['cfpv grid energy consumption', 'p grid energy consumption'], [total_cfpv, total_p], color=['green', 'red'])
+plt.bar(['CFPV grid energy consumption', 'Si-PV grid energy consumption'], [total_cfpv, total_p], color=['green', 'red'])
 plt.show()
 
 
 sizes_cfpv = [grid_consumption_cfpv.sum()[0]/(combined_load_profile['mult'].sum()/60) * 100, ((combined_load_profile['mult'].sum()/60) - grid_consumption_cfpv.sum()[0])/ (combined_load_profile['mult'].sum()/60) *100]
-labels_cfpv = ['grid consumption','CFPV consumption']
+labels_cfpv = ['Grid consumption','CFPV consumption']
 sizes_p= [grid_consumption_p.sum()[0]/(combined_load_profile['mult'].sum()/60) * 100, ((combined_load_profile['mult'].sum()/60) - grid_consumption_p.sum()[0])/ (combined_load_profile['mult'].sum()/60) *100]
-labels_p = ['grid consumption','P consumption']
+labels_p = ['Grid consumption','Si-PV consumption']
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
 ax1.pie(sizes_cfpv, labels=labels_cfpv, autopct='%1.1f%%', startangle=90)
 ax1.axis('equal')
-ax1.set_title('CFPV contribution to load consumption')
+ax1.set_title('CFPV generation and grid consumption')
 ax2.pie(sizes_p, labels=labels_p, autopct='%1.1f%%', startangle=90)
 ax2.axis('equal')
-ax2.set_title('P contribution to load consumption')
+ax2.set_title('Si-PV generation and grid consumption')
 plt.tight_layout()
-plt.savefig('data/plots/pie_charts.png')
+plt.savefig('data/plots/pie_charts_july.png')
 plt.show()
