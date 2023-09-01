@@ -45,9 +45,9 @@ year_combined_load_profile =  pd.concat([year_combined_load_profile] * repeat_fa
 
 
 #CFPV 
-grid_consumption_cfpv = pd.DataFrame(np.zeros(len(year_combined_load_profile)), columns=['consumption'])
-battery_energy_cfpv = pd.DataFrame(np.zeros(len(year_combined_load_profile)), columns=['energy'])
-curtailment_cfpv = pd.DataFrame(np.zeros(len(year_combined_load_profile)), columns=['curtailment'])
+grid_consumption_cfpv = pd.DataFrame(np.zeros(525599), columns=['consumption'])
+battery_energy_cfpv = pd.DataFrame(np.zeros(525599), columns=['energy'])
+curtailment_cfpv = pd.DataFrame(np.zeros(525599), columns=['curtailment'])
 battery_energy_cfpv['energy'][0] = battery_capacity*(SoC_battery/100)
 
 #for i, _ in year_combined_load_profile.iterrows():
@@ -73,9 +73,9 @@ for i in range(525599):
             battery_energy_cfpv['energy'][i+1] = battery_capacity
     
 #Silicon 
-battery_energy_p = pd.DataFrame(np.zeros(len(year_combined_load_profile)), columns=['energy'])
-grid_consumption_p = pd.DataFrame(np.zeros(len(year_combined_load_profile)), columns=['consumption'])
-curtailment_p = pd.DataFrame(np.zeros(len(year_combined_load_profile)), columns=['curtailment'])
+battery_energy_p = pd.DataFrame(np.zeros(525599), columns=['energy'])
+grid_consumption_p = pd.DataFrame(np.zeros(525599), columns=['consumption'])
+curtailment_p = pd.DataFrame(np.zeros(525599), columns=['curtailment'])
 battery_energy_p['energy'][0] = battery_capacity*(SoC_battery/100)
 
 #for i, _ in year_combined_load_profile.iterrows():
@@ -125,3 +125,16 @@ ax2.set_title('Si-PV generation and grid consumption')
 plt.tight_layout()
 plt.savefig('data/plots/pie_charts_year.png')
 plt.show()
+
+#date_range = pd.date_range(start='2022-01-01', end='2023-01-01', freq='T')
+#date_range = date_range.drop(date_range[-2])
+#x['time'] = date_range
+#x['time'] = pd.to_datetime(x['time'])
+#x.set_index('time', inplace=True)
+#plt.plot(x.groupby(x.index.strftime('%H:%M')).mean())
+
+
+#plt.plot(range(1,54), pv_profile['P'].groupby(pv_profile.index.strftime('%Y-%U')).max(), label='Si-PV_max', color='red', linestyle='--')
+
+#plt.bar(range(1,54), grid_consumption_cfpv['consumption'].groupby(grid_consumption_cfpv.index.strftime('%Y-%U')).sum()*60, width=0.35, label='CFPV grid consumption', color='blue', alpha=0.5)
+#plt.bar([week + 0.35 for week in range(1,54)], grid_consumption_p['consumption'].groupby(grid_consumption_p.index.strftime('%Y-%U')).sum()*60, width=0.35, label='Si-PV grid consumption', color='red', alpha=0.5)
