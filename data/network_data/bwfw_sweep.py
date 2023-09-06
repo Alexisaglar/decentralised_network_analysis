@@ -13,7 +13,7 @@ phases = 3
 PF = 0.95
 slackBus = 0
 
-with open('data/network_data/network/LineCodes.csv', newline='') as linecodefile, open('data/network_data/network/Lines.csv', newline='') as linesfile, open('data/network_data/network/Loads.csv') as loadsfile, open('data/network_data/network/Load_Profile_1.csv') as profilefile, open('data/network_data/network/Buscoords.csv') as busfile:
+with open('data/network_data/network/LineCodes.csv', newline='') as linecodefile, open('data/network_data/network/Lines.csv', newline='') as linesfile, open('data/network_data/network/Loads.csv') as loadsfile, open('data/network_data/network/Load_profile_1.csv') as profilefile, open('data/network_data/network/Buscoords.csv') as busfile:
     lines_code = np.array(list(csv.reader(linecodefile)), dtype=object)
     lines_data = np.array(list(csv.reader(linesfile)), dtype=object)
     loads_data = np.array(list(csv.reader(loadsfile)), dtype=object)
@@ -179,7 +179,7 @@ def f_b_sweep(Pi, Qi, calcLineCurrents, calcNodeVoltages, Tload, backOrderedNode
         calcLineCurrents[:,:,i] = lineCurrents[:,:,iter].astype(complex)
         calcNodeVoltages[:,:,i] = nodeVoltages[:,:,iter].astype(complex)
         Tload[i,:] = calcNodeVoltages[1,:,i]*calcLineCurrents[1,:,i]
-        print(Tload[i,:])
+        # print(Tload[i,:])
     return Tload, calcNodeVoltages, calcLineCurrents
 
 def plot_network():
