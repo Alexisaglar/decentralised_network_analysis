@@ -99,7 +99,7 @@ def initial_values(loads_data, load_profile, bus_coords):
                 if bus_phase == 'C': bus_phase = 2
                 Pi[bus-1,bus_phase,:] = load_profile[1:]
     #Convert power to Watts instead of kW. 
-    Pi = Pi*1000
+    Pi = Pi*100
 
     #Create an same size array as apparent power for reactive power 
     Qi = np.zeros((len(bus_coords)-1, phases, len(load_profile)-1))
