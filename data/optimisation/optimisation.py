@@ -21,6 +21,7 @@ def fitness_function(x, mpc, ppopt):
     if not success:
         return 1e10
 
+
   # Check for voltage constraints
     voltage_magnitudes = result['bus'][:, 7]
     if any(voltage < 0.95 or voltage > 1.05 for voltage in voltage_magnitudes):
