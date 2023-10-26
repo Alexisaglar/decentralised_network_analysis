@@ -2,4 +2,5 @@
 *.csv
 *.idx
 config.json
+/data/optimisation/*.ipynb
 #/data/network_data/network/load_profiles/*.csv
