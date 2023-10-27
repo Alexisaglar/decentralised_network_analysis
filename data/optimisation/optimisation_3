@@ -1,0 +1,62 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pypower.api import case30, runopf, ppoption, runpf
+from pyswarm import pso
+
+# Define the objective function
+def objective_function(x):
+    # Set generator active power and voltage magnitude based on the decision variables
+    ppc["gen"][:, 1] = x[:6]  # Pgen
+    ppc["gen"][:, 5] = x[6:]  # Vm
+
+    # Run the power flow
+    results, _ = runpf(ppc)
+
+    # Return the total generation cost
+    return sum(results["gencost"][:, 4] * (results["gen"][:, 1] ** 2) + results["gencost"][:, 5] * results["gen"][:, 1] + results["gencost"][:, 6])
+
+ppc = case30()
+
+# Running PSO 10 times and collecting results
+num_runs = 100
+final_objective_values = []
+all_voltages = []
+
+for _ in range(num_runs):
+    lb = np.concatenate([ppc["gen"][:, 9], ppc["gen"][:, 5]*0.95])  # Lower bounds for Pgen and Vm
+    ub = np.concatenate([ppc["gen"][:, 8], ppc["gen"][:, 5]*1.05])  # Upper bounds for Pgen and Vm
+    
+    xopt, fopt = pso(objective_function, lb, ub, swarmsize=50, maxiter=30, minfunc=1e-8, minstep=1e-8, debug=False)
+    
+    final_objective_values.append(fopt)
+    all_voltages.append(xopt[6:])
+
+# Descriptive Statistics
+print("Best Value:", min(final_objective_values))
+print("Worst Value:", max(final_objective_values))
+print("Mean:", np.mean(final_objective_values))
+print("Median:", np.median(final_objective_values))
+print("Standard Deviation:", np.std(final_objective_values))
+
+# Violin Plot
+plt.figure(figsize=(10, 5))
+sns.violinplot(data=final_objective_values)
+plt.title('Distribution of Final Objective Values')
+plt.show()
+
+# Bus P.U. Voltage Time Series
+plt.figure(figsize=(10, 5))
+for voltages in all_voltages:
+    plt.plot(voltages, '-o')
+plt.xlabel('Generator Bus Index')
+plt.ylabel('P.U. Voltage')
+plt.title('Bus P.U. Voltage across 10 Runs')
+plt.grid(True)
+plt.show()
+
+# Comparison with RUNOPF
+print("\nStandard RUNOPF Results:")
+ppopt = ppoption(PF_ALG=1)
+results = runopf(ppc, ppopt)
+print("Total cost with standard RUNOPF:", results['f'])
