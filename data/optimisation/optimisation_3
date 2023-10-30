@@ -1,62 +1,68 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
-from pypower.api import case30, runopf, ppoption, runpf
+from pypower.api import runpf, case30
 from pyswarm import pso
 
-# Define the objective function
-def objective_function(x):
-    # Set generator active power and voltage magnitude based on the decision variables
-    ppc["gen"][:, 1] = x[:6]  # Pgen
-    ppc["gen"][:, 5] = x[6:]  # Vm
+# List to store power losses for each iteration
+losses = []
 
-    # Run the power flow
-    results, _ = runpf(ppc)
+def power_losses(x):
+    """ Objective function to compute power losses. """
+    
+    # Load the case30 system
+    ppc = case30()
+    
+    # Update the generator real power outputs
+    ppc['gen'][:, 1] = x[:ppc['gen'].shape[0]]
+    ppc['gen'][:, 2] = x[ppc['gen'].shape[0]:]
 
-    # Return the total generation cost
-    return sum(results["gencost"][:, 4] * (results["gen"][:, 1] ** 2) + results["gencost"][:, 5] * results["gen"][:, 1] + results["gencost"][:, 6])
+    # Run a power flow
+    result, _ = runpf(ppc)
+    
+    # Check constraints
+    # Bus voltage limits
+    V = result['bus'][:, 7]
+    Vmin = ppc['bus'][:, 12]
+    Vmax = ppc['bus'][:, 11]
+    # if any(V < Vmin) or any(V > Vmax):
+    #     losses.append(1e10)  # Append penalty to the list
+    #     return 1e10  # Large penalty for voltage constraint violation
+    
+    # Transmission capacity limits
+    flow = np.abs(result['branch'][:, 13:15]).sum(axis=1)
+    capacity = ppc['branch'][:, 5]
+    # if any(flow > capacity):
+    #     losses.append(1e10)  # Append penalty to the list
+    #     return 1e10  # Large penalty for transmission constraint violation
+    
+    # Compute the total power loss in the system
+    loss = sum(result['branch'][:, 13] + result['branch'][:, 14])
+    
+    # Append the loss to the list
+    losses.append(loss)
+    return loss
 
+# Get the generator limits from the case30 system
 ppc = case30()
+Pgen_min = ppc['gen'][:, 9]
+Pgen_max = ppc['gen'][:, 8]
+Qgen_min = ppc['gen'][:, 4]
+Qgen_max = ppc['gen'][:, 3]
 
-# Running PSO 10 times and collecting results
-num_runs = 100
-final_objective_values = []
-all_voltages = []
+# Use PSO to minimize the power losses
+lb = np.concatenate([Pgen_min, Qgen_min])
+ub = np.concatenate([Pgen_max, Qgen_max])
 
-for _ in range(num_runs):
-    lb = np.concatenate([ppc["gen"][:, 9], ppc["gen"][:, 5]*0.95])  # Lower bounds for Pgen and Vm
-    ub = np.concatenate([ppc["gen"][:, 8], ppc["gen"][:, 5]*1.05])  # Upper bounds for Pgen and Vm
-    
-    xopt, fopt = pso(objective_function, lb, ub, swarmsize=50, maxiter=30, minfunc=1e-8, minstep=1e-8, debug=False)
-    
-    final_objective_values.append(fopt)
-    all_voltages.append(xopt[6:])
+xopt, fopt = pso(power_losses, lb, ub)
 
-# Descriptive Statistics
-print("Best Value:", min(final_objective_values))
-print("Worst Value:", max(final_objective_values))
-print("Mean:", np.mean(final_objective_values))
-print("Median:", np.median(final_objective_values))
-print("Standard Deviation:", np.std(final_objective_values))
+print("Optimal generator outputs (P and Q): ", xopt)
+print("Minimum power losses: ", fopt)
 
-# Violin Plot
-plt.figure(figsize=(10, 5))
-sns.violinplot(data=final_objective_values)
-plt.title('Distribution of Final Objective Values')
-plt.show()
-
-# Bus P.U. Voltage Time Series
-plt.figure(figsize=(10, 5))
-for voltages in all_voltages:
-    plt.plot(voltages, '-o')
-plt.xlabel('Generator Bus Index')
-plt.ylabel('P.U. Voltage')
-plt.title('Bus P.U. Voltage across 10 Runs')
+# Plotting the losses across iterations
+plt.figure(figsize=(10, 6))
+plt.plot(losses, '-o')
+plt.title('Power Losses across Iterations')
+plt.xlabel('Iteration')
+plt.ylabel('Power Losses (or Penalty Value)')
 plt.grid(True)
 plt.show()
-
-# Comparison with RUNOPF
-print("\nStandard RUNOPF Results:")
-ppopt = ppoption(PF_ALG=1)
-results = runopf(ppc, ppopt)
-print("Total cost with standard RUNOPF:", results['f'])

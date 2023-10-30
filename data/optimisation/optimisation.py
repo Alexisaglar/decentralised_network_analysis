@@ -1,58 +1,46 @@
 import numpy as np
-from pypower.api import case30, runpf
 from pyswarm import pso
+import pypower.api as pp
+from pypower.case9 import case9
 
-# Load case
-ppc = case30()
+# Define the fitness function
+def fitness_function(x, ppc):
+    V = x[:len(Npq)]
+    T = x[len(Npq):len(Npq)+len(Nt)]
+    QG = x[len(Npq)+len(Nt):]
 
-def objective_function(x):
-    Pg = x[:6]  # Active power outputs
-    Vg = x[6:12]  # Voltage magnitudes
-    Tc = x[12:18]  # Hypothetical transmission constraints
-    Qc = x[18:24]  # Reactive power constraints
+    # Calculate penalties based on provided equations
+    penalty_V = np.sum([lambda_Vi * (Vi - V_lim_i)**2 for Vi, V_lim_i in zip(V, V_lim)])
+    penalty_T = np.sum([lambda_Ti * (Ti - T_lim_i)**2 for Ti, T_lim_i in zip(T, T_lim)])
+    penalty_QG = np.sum([lambda_Gi * (QGi - QG_lim_i)**2 for QGi, QG_lim_i in zip(QG, QG_lim)])
+    
+    return penalty_V + penalty_T + penalty_QG
 
-    # Update power system case with decision variables
-    ppc["gen"][:, 1] = Pg  # Pgen
-    ppc["gen"][:, 5] = Vg  # Vm
+# Load PyPower case
+ppc = case9()
 
-    # Power flow
-    results, _ = runpf(ppc)
-    cost = sum(results["gencost"][:, 4] * (Pg ** 2) + results["gencost"][:, 5] * Pg + results["gencost"][:, 6])
+# Extract necessary data
+Npq = list(range(len(ppc['bus'])))
+Nt = list(range(len(ppc['branch'])))
+Ng = list(range(len(ppc['gen'])))
 
-    # Penalty term for inequality constraints
-    penalty = 0
+# Define the constraints
+# This is a basic assumption for the constraints, and it may need adjustments based on your specific problem.
+lb = [0.9]*len(Npq) + [0.95]*len(Nt) + [0]*len(Ng)  # Lower bounds
+ub = [1.1]*len(Npq) + [1.05]*len(Nt) + [100]*len(Ng)  # Upper bounds
 
-    # For Pg
-    for val in Pg:
-        if val < ppc["gen"][:, 9][0] or val > ppc["gen"][:, 8][0]:  # Pmin and Pmax
-            penalty += 1e6
+# Sample penalty multipliers - These should be tuned or defined based on the problem specifics
+lambda_Vi = 1.0
+lambda_Ti = 1.0
+lambda_Gi = 1.0
 
-    # For Vg
-    for val in Vg:
-        if val < 0.95 or val > 1.05:  # Voltage limits
-            penalty += 1e6
+# Sample limiting values - Again, these are just placeholders and should be defined appropriately
+V_lim = [1.0 for _ in Npq]
+T_lim = [1.0 for _ in Nt]
+QG_lim = [50 for _ in Ng]
 
-    # For Tc (example limits: 0 and 100)
-    for val in Tc:
-        if val < 0 or val > 100:
-            penalty += 1e6
-
-    # For Qc (example limits: Qmin and Qmax)
-    for val in Qc:
-        if val < ppc["gen"][:, 3][0] or val > ppc["gen"][:, 4][0]:  # Qmin and Qmax
-            penalty += 1e6
-
-    # Penalty for equality constraints (power balance)
-    if abs(sum(Pg) - sum(ppc["bus"][:, 2])) > 1e-3:  # 1e-3 is a small tolerance
-        penalty += 1e6
-
-    return cost + penalty
-
-# Lower and Upper bounds
-lb = np.concatenate([ppc["gen"][:, 9], [0.95]*6, [0]*6, ppc["gen"][:, 4]])
-ub = np.concatenate([ppc["gen"][:, 8], [1.05]*6, [100]*6, ppc["gen"][:, 3]])
-
-xopt, fopt = pso(objective_function, lb, ub, swarmsize=50, maxiter=30, minfunc=1e-8, minstep=1e-8)
+# Apply the PSO algorithm
+xopt, fopt = pso(fitness_function, lb, ub, args=(ppc,), swarmsize=50, maxiter=500)
 
 print("Optimal solution:", xopt)
-print("Objective value:", fopt)
+print("Objective function value:", fopt)
