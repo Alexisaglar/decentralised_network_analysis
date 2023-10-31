@@ -1,0 +1,51 @@
+import numpy as np
+from pypower.api import runpf, ppoption, case30
+from pyswarm import pso
+
+# Load the power system data
+ppc = case30()
+
+# Extracting Generator Power Limits
+Pmin = ppc['gen'][:, 9]
+Pmax = ppc['gen'][:, 8]
+Qmin = ppc['gen'][:, 4]
+Qmax = ppc['gen'][:, 3]
+
+# Extracting Voltage Magnitude Limits
+Vmin = ppc['bus'][:, 12]
+Vmax = ppc['bus'][:, 11]
+
+def objective_function(PV_penetration):
+    # Copy the power system data to avoid changes to the original data
+    ppc_temp = ppc.copy()
+    
+    # Add PV systems to load buses
+    for i, penetration in enumerate(PV_penetration):
+        # Subtract the PV generation (modeled as negative load) from the demand
+        ppc_temp['bus'][i, 2] -= 5 * penetration
+
+    # Run power flow
+    result, success = runpf(ppc_temp, ppoption(VERBOSE=0, OUT_ALL=0))
+    
+    # Constraints
+    # Generation constraints
+    Pgen_limits_violated = np.any((result['gen'][:, 1] < Pmin) | (result['gen'][:, 1] > Pmax))
+    Qgen_limits_violated = np.any((result['gen'][:, 2] < Qmin) | (result['gen'][:, 2] > Qmax))
+    # Voltage magnitude constraints
+    V_limits_violated = np.any((result['bus'][:, 7] < Vmin) | (result['bus'][:, 7] > Vmax))
+    
+    # Check constraints
+    if not success or Pgen_limits_violated or Qgen_limits_violated or V_limits_violated:
+        return np.inf
+    else:
+        return -np.sum(PV_penetration)  # We want to maximize PV penetration, hence negative sum
+
+# Constraints for PSO: Each element in PV_penetration is either 0 (no PV) or 1 (5MW PV)
+lb = [0] * ppc['bus'].shape[0]  # Lower bounds
+ub = [1] * ppc['bus'].shape[0]  # Upper bounds
+
+# Optimize using PSO
+best_PV_penetration, _ = pso(objective_function, lb, ub, swarmsize=30, maxiter=100, debug=True)
+
+print(f"Optimal PV Penetration: {best_PV_penetration}")
+print(f"Total PV capacity added: {np.sum(best_PV_penetration) * 5} MW")
