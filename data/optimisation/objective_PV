@@ -1,51 +1,98 @@
 import numpy as np
-from pypower.api import runpf, ppoption, case30
+from pypower.api import case30, runpf, ppoption
 from pyswarm import pso
+import matplotlib.pyplot as plt
 
-# Load the power system data
+# Define the objective function for optimization
+def objective_function(PV_penetration_variables):
+    ppc = case30()
+    total_pv_penetration = 0
+    
+    # Gradually set up the PV units at load buses based on the variables
+    for i, penetration in enumerate(PV_penetration_variables):
+        pv_size = penetration * 5  # Gradual PV increase
+        ppc['bus'][i, 2] -= pv_size
+        total_pv_penetration += pv_size
+    
+    ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=0)
+    result, success = runpf(ppc, ppopt)
+    
+    if not success:
+        return total_pv_penetration - 100  # Smaller penalty
+    
+    return -1 * total_pv_penetration  # Negate since we are maximizin
+
+# Define the inequality constraint function
+def constraint_function(PV_penetration_variables):
+    ppc = case30()
+    
+    for i, penetration in enumerate(PV_penetration_variables):
+        if penetration > 0.5:
+            ppc['bus'][i, 2] -= 5
+    
+    ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=0)
+    result, success = runpf(ppc, ppopt)
+    
+    constraints = []
+    
+    # Generator active and reactive power limits
+    for gen in result['gen']:
+        Pg, Qg = gen[1], gen[2]
+        Pmax, Pmin, Qmax, Qmin = gen[8], gen[9], gen[3], gen[4]
+        constraints.append(Pmax - Pg)
+        constraints.append(Pg - Pmin)
+        constraints.append(Qmax - Qg)
+        constraints.append(Qg - Qmin)
+    
+    # Bus voltage limits
+    for bus in result['bus']:
+        V = bus[7]
+        Vmax, Vmin = bus[11], bus[12]
+        constraints.append(Vmax - V)
+        constraints.append(V - Vmin)
+    
+    return np.array(constraints)
+
+# Number of buses
+num_buses = len(case30()['bus'])
+
+# Optimization variable bounds
+lb = [0] * num_buses  # Lower bounds
+ub = [1] * num_buses  # Upper bounds
+
+# Run the optimization with constraints
+xopt, fopt = pso(objective_function, lb, ub, f_ieqcons=constraint_function, swarmsize=50, maxiter=50, debug=True)
+
+# Print the results
+print("Optimal PV penetration decisions:", xopt)
+print("Maximized PV penetration:", -1 * fopt)
+
+# Power flow analysis for the optimal solution
 ppc = case30()
+for i, penetration in enumerate(xopt):
+    if penetration > 0.5:
+        ppc['bus'][i, 2] -= 5
 
-# Extracting Generator Power Limits
-Pmin = ppc['gen'][:, 9]
-Pmax = ppc['gen'][:, 8]
-Qmin = ppc['gen'][:, 4]
-Qmax = ppc['gen'][:, 3]
+ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=1)
+result, success = runpf(ppc, ppopt)
 
-# Extracting Voltage Magnitude Limits
-Vmin = ppc['bus'][:, 12]
-Vmax = ppc['bus'][:, 11]
+# Extract voltage magnitudes
+voltages = result['bus'][:, 7]
 
-def objective_function(PV_penetration):
-    # Copy the power system data to avoid changes to the original data
-    ppc_temp = ppc.copy()
-    
-    # Add PV systems to load buses
-    for i, penetration in enumerate(PV_penetration):
-        # Subtract the PV generation (modeled as negative load) from the demand
-        ppc_temp['bus'][i, 2] -= 5 * penetration
+# Plotting
+plt.figure(figsize=(14, 7))
 
-    # Run power flow
-    result, success = runpf(ppc_temp, ppoption(VERBOSE=0, OUT_ALL=0))
-    
-    # Constraints
-    # Generation constraints
-    Pgen_limits_violated = np.any((result['gen'][:, 1] < Pmin) | (result['gen'][:, 1] > Pmax))
-    Qgen_limits_violated = np.any((result['gen'][:, 2] < Qmin) | (result['gen'][:, 2] > Qmax))
-    # Voltage magnitude constraints
-    V_limits_violated = np.any((result['bus'][:, 7] < Vmin) | (result['bus'][:, 7] > Vmax))
-    
-    # Check constraints
-    if not success or Pgen_limits_violated or Qgen_limits_violated or V_limits_violated:
-        return np.inf
-    else:
-        return -np.sum(PV_penetration)  # We want to maximize PV penetration, hence negative sum
+plt.subplot(1, 2, 1)
+plt.bar(range(1, num_buses+1), [5 if x > 0.5 else 0 for x in xopt])
+plt.xlabel('Bus Number')
+plt.ylabel('PV Penetration (MW)')
+plt.title('PV Penetration at Each Bus')
 
-# Constraints for PSO: Each element in PV_penetration is either 0 (no PV) or 1 (5MW PV)
-lb = [0] * ppc['bus'].shape[0]  # Lower bounds
-ub = [1] * ppc['bus'].shape[0]  # Upper bounds
+plt.subplot(1, 2, 2)
+plt.plot(range(1, num_buses+1), voltages, marker='o')
+plt.xlabel('Bus Number')
+plt.ylabel('Voltage (p.u.)')
+plt.title('Voltage at Each Bus')
 
-# Optimize using PSO
-best_PV_penetration, _ = pso(objective_function, lb, ub, swarmsize=30, maxiter=100, debug=True)
-
-print(f"Optimal PV Penetration: {best_PV_penetration}")
-print(f"Total PV capacity added: {np.sum(best_PV_penetration) * 5} MW")
+plt.tight_layout()
+plt.show()
