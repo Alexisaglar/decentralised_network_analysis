@@ -1,78 +1,89 @@
 import numpy as np
+import random
+from pypower.api import case30, runpf, ppoption
 import matplotlib.pyplot as plt
-from pypower.api import runpf, case30
-from pyswarm import pso
+import pyswarms as ps
+from copy import deepcopy
 
-# List to store actual power losses for each iteration (without penalties)
-actual_losses = []
 
-def power_losses(x):
-    """ Objective function to compute power losses. """
-    
-    # Load the case30 system
-    ppc = case30()
-    
-    # Update the generator real power outputs
-    ppc['gen'][:, 1] = x[:ppc['gen'].shape[0]]
-    ppc['gen'][:, 2] = x[ppc['gen'].shape[0]:]
-
-    # Run a power flow
-    result, _ = runpf(ppc)
-    
-    # Compute the total power loss in the system
-    # loss = sum(result['branch'][:, 13] + result['branch'][:, 14])
-   
-    losses = calculate_losses(result) 
-    # Append the loss to the actual_losses list
-    actual_losses.append(losses)
-    
-    # Check constraints
-    # Bus voltage limits
-    V = result['bus'][:, 7]
-    Vmin = ppc['bus'][:, 12]
-    Vmax = ppc['bus'][:, 11]
-    if any(V < Vmin) or any(V > Vmax):
-        return 200  # Large penalty for voltage constraint violation
-    
-    # # Transmission capacity limits
-    # flow = np.abs(result['branch'][:, 13:15]).sum(axis=1)
-    # capacity = ppc['branch'][:, 5]
-    # if any(flow > capacity):
-    #     return 200  # Large penalty for transmission constraint violation
-
-    return losses
-
-def calculate_losses(ppc):
-    # Sum of power generated
-    total_gen = sum(ppc['gen'][:, 1])
-    
-    # Sum of power consumed by the loads
-    total_load = sum(ppc['bus'][:, 2])
-    
-    losses = total_gen - total_load
-    return losses
-
-# Get the generator limits from the case30 system
+# Load the case
 ppc = case30()
-Pgen_min = ppc['gen'][:, 9]
-Pgen_max = ppc['gen'][:, 8]
-Qgen_min = ppc['gen'][:, 4]
-Qgen_max = ppc['gen'][:, 3]
 
-# Use PSO to minimize the power losses
-lb = np.concatenate([Pgen_min, Qgen_min])
-ub = np.concatenate([Pgen_max, Qgen_max])
+# Options for power flow
+ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=0)
 
-xopt, fopt = pso(power_losses, lb, ub, swarmsize=15)
+# Extract load bus indices
+load_bus_indices = [i for i, bus in enumerate(ppc['bus']) if bus[2] > 0]
+n_buses = len(load_bus_indices)
 
-print("Optimal generator outputs (P and Q): ", xopt)
-print("Minimum power losses: ", fopt)
+# Define the objective function
+def objective_function(x):
+    costs = np.zeros(x.shape[0])
+    for idx, particle in enumerate(x):
+        ppc_temp = deepcopy(ppc)  # Use deepcopy instead of np.copy
+        # Add PV penetration
+        for i, val in enumerate(particle):
+            if val > 0.5:  # If particle dimension value is greater than 0.5, install 5 MW PV
+                ppc_temp['bus'][load_bus_indices[i], 2] -= 5
+        # Run power flow
+        result, success = runpf(ppc_temp, ppopt)
+        # Calculate cost (negative of total PV penetration) if power flow is successful and no constraints are violated
+        if success and check_constraints(result):
+            costs[idx] = -sum(particle > 0.5) * 5  # We want to maximize PV penetration, hence negative cost
+        else:
+            costs[idx] = 1000  # Large cost if constraints are violated
+    return costs
 
-# Plotting the actual power losses across iterations
-plt.figure(figsize=(10, 6))
-plt.plot(actual_losses, '-o')
-plt.title('Actual Power Losses across Iterations')
-plt.xlabel('Iteration')
-plt.ylabel('Power Losses')
-plt.grid(True)
+def check_constraints(result):
+    # Check if voltage limits are violated
+    if any(bus[7] < bus[12] or bus[7] > bus[11] for bus in result['bus']):
+        return False
+    # Check if generator limits are violated
+    for gen in result['gen']:
+        if not (gen[8] <= gen[1] <= gen[9]) or not (gen[4] <= gen[2] <= gen[5]):
+            return False
+    return True
+
+# Initialize swarm
+options = {'c1': 0.5, 'c2': 0.3, 'w': 0.9}
+
+# Define bounds
+max_bound = np.array([1] * n_buses)
+min_bound = np.array([0] * n_buses)
+bounds = (min_bound, max_bound)
+
+# Initialize the swarm
+optimizer = ps.single.GlobalBestPSO(n_particles=30, dimensions=n_buses, options=options, bounds=bounds)
+
+# Perform optimization
+cost, pos = optimizer.optimize(objective_function, iters=100)
+
+# Extract the optimized PV penetration solution
+optimized_PV_penetration = (pos > 0.5).astype(int) * 5
+
+# Apply the optimized PV penetration to the system
+for i, val in enumerate(optimized_PV_penetration):
+    ppc['bus'][load_bus_indices[i], 2] -= val
+
+# Run power flow for the optimized solution
+result, success = runpf(ppc, ppopt)
+
+# Plotting
+voltages = [bus[7] for bus in result['bus']]
+
+plt.figure(figsize=(14, 7))
+
+plt.subplot(1, 2, 1)
+plt.bar(load_bus_indices, optimized_PV_penetration)
+plt.xlabel('Bus Number')
+plt.ylabel('PV Penetration (MW)')
+plt.title('Optimized PV Penetration at Each Load Bus')
+
+plt.subplot(1, 2, 2)
+plt.plot(range(1, len(ppc['bus'])+1), voltages, marker='o')
+plt.xlabel('Bus Number')
+plt.ylabel('Voltage (p.u.)')
+plt.title('Voltage at Each Bus with Optimized PV Penetration')
+
+plt.tight_layout()
 plt.show()

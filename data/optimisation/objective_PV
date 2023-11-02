@@ -1,98 +1,17 @@
 import numpy as np
-from pypower.api import case30, runpf, ppoption
-from pyswarm import pso
+from pypower.api import case33bw, case30, runpf, ppoption
 import matplotlib.pyplot as plt
+import random
+import pandapower.networks as pn
 
-# Define the objective function for optimization
-def objective_function(PV_penetration_variables):
-    ppc = case30()
-    total_pv_penetration = 0
-    
-    # Gradually set up the PV units at load buses based on the variables
-    for i, penetration in enumerate(PV_penetration_variables):
-        pv_size = penetration * 5  # Gradual PV increase
-        ppc['bus'][i, 2] -= pv_size
-        total_pv_penetration += pv_size
-    
-    ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=0)
-    result, success = runpf(ppc, ppopt)
-    
-    if not success:
-        return total_pv_penetration - 100  # Smaller penalty
-    
-    return -1 * total_pv_penetration  # Negate since we are maximizin
+# Initialize
+ppc = case33bw()
+# ppc = case30()
+# ppc['branch'][:,2] = ppc['branch'][:,2]/(12.66**2/10)
+# ppc['branch'][:,3] = ppc['branch'][:,3]/(12.66**2/10)
+# ppc['bus'][:,2] = ppc['bus'][:,2]/1000
+# ppc['bus'][:,3] = ppc['bus'][:,3]/1000
 
-# Define the inequality constraint function
-def constraint_function(PV_penetration_variables):
-    ppc = case30()
-    
-    for i, penetration in enumerate(PV_penetration_variables):
-        if penetration > 0.5:
-            ppc['bus'][i, 2] -= 5
-    
-    ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=0)
-    result, success = runpf(ppc, ppopt)
-    
-    constraints = []
-    
-    # Generator active and reactive power limits
-    for gen in result['gen']:
-        Pg, Qg = gen[1], gen[2]
-        Pmax, Pmin, Qmax, Qmin = gen[8], gen[9], gen[3], gen[4]
-        constraints.append(Pmax - Pg)
-        constraints.append(Pg - Pmin)
-        constraints.append(Qmax - Qg)
-        constraints.append(Qg - Qmin)
-    
-    # Bus voltage limits
-    for bus in result['bus']:
-        V = bus[7]
-        Vmax, Vmin = bus[11], bus[12]
-        constraints.append(Vmax - V)
-        constraints.append(V - Vmin)
-    
-    return np.array(constraints)
+ppopt = ppoption(PF_ALG=1, VERBOSE=1, OUT_ALL=1)
+result, success = runpf(ppc)
 
-# Number of buses
-num_buses = len(case30()['bus'])
-
-# Optimization variable bounds
-lb = [0] * num_buses  # Lower bounds
-ub = [1] * num_buses  # Upper bounds
-
-# Run the optimization with constraints
-xopt, fopt = pso(objective_function, lb, ub, f_ieqcons=constraint_function, swarmsize=50, maxiter=50, debug=True)
-
-# Print the results
-print("Optimal PV penetration decisions:", xopt)
-print("Maximized PV penetration:", -1 * fopt)
-
-# Power flow analysis for the optimal solution
-ppc = case30()
-for i, penetration in enumerate(xopt):
-    if penetration > 0.5:
-        ppc['bus'][i, 2] -= 5
-
-ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=1)
-result, success = runpf(ppc, ppopt)
-
-# Extract voltage magnitudes
-voltages = result['bus'][:, 7]
-
-# Plotting
-plt.figure(figsize=(14, 7))
-
-plt.subplot(1, 2, 1)
-plt.bar(range(1, num_buses+1), [5 if x > 0.5 else 0 for x in xopt])
-plt.xlabel('Bus Number')
-plt.ylabel('PV Penetration (MW)')
-plt.title('PV Penetration at Each Bus')
-
-plt.subplot(1, 2, 2)
-plt.plot(range(1, num_buses+1), voltages, marker='o')
-plt.xlabel('Bus Number')
-plt.ylabel('Voltage (p.u.)')
-plt.title('Voltage at Each Bus')
-
-plt.tight_layout()
-plt.show()
