@@ -1,6 +1,6 @@
 import numpy as np
 import random
-from pypower.api import case33bw, runpf, ppoption, case30
+from pypower.api import case33bw, runpf, ppoption
 import matplotlib.pyplot as plt
 import pyswarms as ps
 from copy import deepcopy
@@ -9,7 +9,7 @@ from copy import deepcopy
 ppc = case33bw()
 
 # Define power flow options
-ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=1)
+ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=1)  # Change verbosity to 0 to reduce output
 
 # Get load bus indices (all buses are load buses in case33bw)
 load_bus_indices = np.arange(len(ppc['bus']))
@@ -18,7 +18,7 @@ load_bus_indices = np.arange(len(ppc['bus']))
 n_runs = 10
 
 # Record the best cost and position for each run
-best_costs = np.zeros(n_runs)
+best_losses = np.zeros(n_runs)
 best_positions = np.zeros((n_runs, len(load_bus_indices)))
 
 def check_constraints(result):
@@ -32,7 +32,7 @@ def check_constraints(result):
     return True
 
 def objective_function(x):
-    costs = np.zeros(x.shape[0])
+    power_losses = np.zeros(x.shape[0])
     for idx, particle in enumerate(x):
         ppc_temp = deepcopy(ppc)  # Use deepcopy instead of np.copy
         # Add PV penetration
@@ -41,12 +41,13 @@ def objective_function(x):
                 ppc_temp['bus'][load_bus_indices[i], 2] -= .005
         # Run power flow
         result, success = runpf(ppc_temp, ppopt)
-        # Calculate cost (negative of total PV penetration) if power flow is successful and no constraints are violated
+        # Calculate power losses if power flow is successful and no constraints are violated
         if success and check_constraints(result):
-            costs[idx] = -sum(particle > 0.5) * 0.005  # We want to maximize PV penetration, hence negative cost
+            total_loss = sum(result['branch'][:, 13])  # The total real power loss in the system
+            power_losses[idx] = total_loss
         else:
-            costs[idx] = 1000  # Large cost if constraints are violated
-    return costs
+            power_losses[idx] = 1000  # Large value if constraints are violated (acts as a penalty)
+    return power_losses
 
 # PSO parameters
 options = {'c1': 0.5, 'c2': 0.3, 'w': 0.9}
@@ -57,21 +58,21 @@ for run in range(n_runs):
     optimizer = ps.single.GlobalBestPSO(n_particles=20, dimensions=len(load_bus_indices), options=options, bounds=bounds)
 
     # Perform optimization
-    cost, pos = optimizer.optimize(objective_function, iters=50)
+    loss, pos = optimizer.optimize(objective_function, iters=50)
 
-    # Store the best cost and position
-    best_costs[run] = cost
+    # Store the best loss and position
+    best_losses[run] = loss
     best_positions[run, :] = pos
 
 # Analyze the results
-average_cost = np.mean(best_costs)
-std_dev_cost = np.std(best_costs)
+average_loss = np.mean(best_losses)
+std_dev_loss = np.std(best_losses)
 
-print(f"Average optimized PV penetration cost: {average_cost}")
-print(f"Standard deviation of optimized PV penetration cost: {std_dev_cost}")
+print(f"Average optimized power loss: {average_loss}")
+print(f"Standard deviation of optimized power loss: {std_dev_loss}")
 
 # Find the best solution from all Monte Carlo runs
-best_run_idx = np.argmin(best_costs)
+best_run_idx = np.argmin(best_losses)
 best_solution = best_positions[best_run_idx, :]
 
 # Apply the best PV penetration to the system
@@ -107,7 +108,7 @@ plt.subplot(1, 3, 3)
 plt.plot(range(1, len(ppc_best['bus'])+1), voltages, marker='o', color='green')
 plt.xlabel('Bus Number')
 plt.ylabel('Voltage (p.u.)')
-plt.title('Voltage at Each Bus with Best Optimized PV Penetration')
+plt.title('Voltage at Each Bus with Optimized Power Losses')
 
 plt.tight_layout()
 plt.show()
