@@ -16,11 +16,11 @@ load_bus_indices = np.arange(len(ppc['bus']))
 # Create Generation and Load Profiles (example, replace with actual data)
 hours = 24
 load = [0.1, 0.18, 0.2, 0.18, 0.15, 0.24, 0.5, 0.6, 0.55, 0.48, 0.45, 0.42, 0.4, 0.4, 0.5, 0.6, 0.8, 0.85, 0.9, 0.8, 0.7, 0.6, 0.3, 0.2] 
-load_profile = np.array(load).reshape(-1, 1) /50
+load_profile = np.array(load).reshape(-1, 1) /20
 print(load_profile)
 
 generation = [0, 0, 0, 0, 0, 0, 0.25, 1, 2, 3.25, 4.5, 5, 4.5, 3.25, 2, 1, 0.5, 0.25, 0, 0, 0, 0, 0, 0]  
-generation_profile = np.array(generation).reshape(-1, 1) /20
+generation_profile = np.array(generation).reshape(-1, 1) /50
 print(generation_profile)
 
 class BinaryPSO:
@@ -91,7 +91,8 @@ def objective_function(x):
 
         # Adjust load and subtract generation for the current hour at each bus
         for bus_idx in load_bus_indices:
-            load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour]+1)
+            # load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour]+1)
+            load_change = load_profile[hour]
             generation_change = 0
             # If this bus is allowed to have generation, subtract the generation profile
             if x[bus_idx] == 1:
@@ -126,14 +127,17 @@ print(best_position)
 total_losses = []
 total_losses_without_pv = []
 total_load_consumption = []
+total_load_consumption_without_pv = []
 voltage_profiles = [[] for _ in range(len(ppc['bus']))]
 voltage_profiles_without_pv = [[] for _ in range(len(ppc['bus']))]
 
 for hour in range(hours):
     ppc_temp = deepcopy(ppc)
     for bus_idx in load_bus_indices:
-        load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour]+1)
-        load_change_without_pv = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour]+1)
+        # load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour]+1)
+        load_change = load_profile[hour]
+        # load_change_without_pv = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour]+1)
+        load_change_without_pv = load_profile[hour]
         ppc['bus'][bus_idx, 2] = load_change_without_pv
         generation_change = 0
         if best_position[bus_idx] == 1:
@@ -154,7 +158,8 @@ for hour in range(hours):
     losses_without_pv = sum(result_without_pv['branch'][:, 13] + result_without_pv['branch'][:, 15])
     total_losses.append(losses)
     total_losses_without_pv.append(losses_without_pv)
-    total_load_consumption.append(load_change_without_pv)
+    total_load_consumption.append(net_load)
+    total_load_consumption_without_pv.append(load_change_without_pv)
 
 
 # Graph Total Power Losses over 24 hours
@@ -187,6 +192,8 @@ plt.figure(figsize=(12, 6))
 plt.plot(hours, total_pv_generation, label='PV Generation (MW)', color='green', marker='o')
 # Plotting load consumption
 plt.plot(hours, total_load_consumption, label='Load Consumption (MW)', color='red', marker='x')
+# Plotting load consumption without PV
+plt.plot(hours, total_load_consumption_without_pv, label='Load Consumption (MW)', color='red', marker='x')
 plt.title('PV Generation and Load Consumption over 24 Hours')
 plt.xlabel('Hour of the Day')
 plt.ylabel('Power (MW)')
