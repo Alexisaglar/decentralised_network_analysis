@@ -8,7 +8,7 @@ from copy import deepcopy
 ppc = case33bw()
 
 # Define power flow options
-ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=0)
+ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=1)
 
 # Get load bus indices (all buses are load buses in case33bw)
 load_bus_indices = np.arange(len(ppc['bus']))
@@ -16,7 +16,7 @@ load_bus_indices = np.arange(len(ppc['bus']))
 # Create Generation and Load Profiles (example, replace with actual data)
 hours = 24
 load = [0.1, 0.18, 0.2, 0.18, 0.15, 0.24, 0.5, 0.6, 0.55, 0.48, 0.45, 0.42, 0.4, 0.4, 0.5, 0.6, 0.8, 0.85, 0.9, 0.8, 0.7, 0.6, 0.3, 0.2] 
-load_profile = np.array(load).reshape(-1, 1) /20
+load_profile = np.array(load).reshape(-1, 1) 
 print(load_profile)
 
 generation = [0, 0, 0, 0, 0, 0, 0.25, 1, 2, 3.25, 4.5, 5, 4.5, 3.25, 2, 1, 0.5, 0.25, 0, 0, 0, 0, 0, 0]  
@@ -91,8 +91,8 @@ def objective_function(x):
 
         # Adjust load and subtract generation for the current hour at each bus
         for bus_idx in load_bus_indices:
-            # load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour]+1)
-            load_change = load_profile[hour]
+            load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour])
+            # load_change = load_profile[hour]
             generation_change = 0
             # If this bus is allowed to have generation, subtract the generation profile
             if x[bus_idx] == 1:
@@ -124,7 +124,7 @@ max_iter = 50
 # best_position, best_value = bpso.run(max_iter)
 # print(best_position)
 # Initialize and run BPSO multiple times
-n_runs = 10
+n_runs = 1
 bus_frequency = np.zeros(dimensions)  # Added: Track the frequency of each bus being selected for PV installation
 
 # Record the best positions and values for each run
@@ -161,10 +161,10 @@ voltage_profiles_without_pv = [[] for _ in range(len(ppc['bus']))]
 for hour in range(hours):
     ppc_temp = deepcopy(ppc)
     for bus_idx in load_bus_indices:
-        # load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour]+1)
-        load_change = load_profile[hour]
-        # load_change_without_pv = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour]+1)
-        load_change_without_pv = load_profile[hour]
+        load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour])
+        # load_change = load_profile[hour]
+        load_change_without_pv = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour])
+        # load_change_without_pv = load_profile[hour]
         ppc['bus'][bus_idx, 2] = load_change_without_pv
         generation_change = 0
         if overall_best_position[bus_idx] == 1:
@@ -192,7 +192,7 @@ for hour in range(hours):
 # Graph Total Power Losses over 24 hours
 plt.figure(figsize=(10, 5))
 plt.plot(total_losses, 'o-')
-plt.plot(total_losses_without_pv, 'o-')
+plt.plot(total_losses_without_pv, marker='x')
 plt.title('Total Power Losses over 24 Hours')
 plt.xlabel('Hour of the Day')
 plt.ylabel('Total Power Losses (MW)')
