@@ -1,12 +1,11 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 class BinaryPSO:
-    def __init__(self, n_particles, dimensions, objective_func, lb, ub, max_iter=100):
+    def __init__(self, n_particles, dimensions, objective_func, max_iter=100):
         self.n_particles = n_particles
         self.dimensions = dimensions
         self.objective_func = objective_func
-        self.lb = lb
-        self.ub = ub
         self.max_iter = max_iter
         self.gbest_value = float('inf')
         self.gbest_position = np.zeros(self.dimensions)
@@ -14,6 +13,7 @@ class BinaryPSO:
         self.pbest_position = self.particles_position
         self.pbest_value = np.array([float('inf')] * self.n_particles)
         self.velocity = np.zeros((self.n_particles, self.dimensions))
+        self.gbest_value_history = []
 
     def sigmoid(self, x):
         return 1 / (1 + np.exp(-x))
@@ -43,28 +43,43 @@ class BinaryPSO:
             if fitness < self.gbest_value:
                 self.gbest_value = fitness
                 self.gbest_position = self.particles_position[i].copy()
+        self.gbest_value_history.append(self.gbest_value)  # Update history
 
-    def run(self, w=0.7, c1=1.4, c2=1.4):
+
+    def run(self, c1=1.4, c2=1.4):
+        w_max = 0.9 # Initial inertia weight
+        w_min = 0.6  # Final inertia weight 
+
         for iteration in range(self.max_iter):
+            w = w_max - (w_max - w_min) * iteration / self.max_iter  # Linearly decreasing w
             self.update_velocity(w, c1, c2)
             self.update_position()
             self.evaluate()
         return self.gbest_position, self.gbest_value
 
+    def plot_convergence_curve(self):
+        plt.figure(figsize=(10, 6))
+        plt.plot(self.gbest_value_history, linewidth=2)
+        plt.title("BPSO Convergence Curve")
+        plt.xlabel('Iteration')
+        plt.ylabel('Best Fitness Value')
+        plt.grid(True)
+        plt.show()
+
 # Example Objective Function
 def objective_function(x):
-    return np.sum(x)
+    return sum(x)
 
 # Parameters
-n_particles = 30
+n_particles = 150
 dimensions = 30
-lb = 0
-ub = 1
-max_iter = 50
+max_iter = 300
 
 # Initialize and run BPSO
-bpso = BinaryPSO(n_particles, dimensions, objective_function, lb, ub, max_iter)
+bpso = BinaryPSO(n_particles, dimensions, objective_function, max_iter)
 best_position, best_value = bpso.run()
 
 print("Best Position:", best_position)
 print("Best Value:", best_value)
+
+bpso.plot_convergence_curve()

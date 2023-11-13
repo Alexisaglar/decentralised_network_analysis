@@ -14,16 +14,6 @@ ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=0)
 # Get load bus indices (all buses are load buses in case33bw)
 load_bus_indices = np.arange(len(ppc['bus']))
 
-# Create Generation and Load Profiles (example, replace with actual data)
-hours = 24
-load = [0.1, 0.18, 0.2, 0.18, 0.15, 0.24, 0.5, 0.6, 0.55, 0.48, 0.45, 0.42, 0.4, 0.4, 0.5, 0.6, 0.8, 0.85, 1, 0.85, 0.7, 0.6, 0.3, 0.2] 
-load_profile = np.array(load).reshape(-1, 1) 
-print(load_profile)
-
-generation = [0, 0, 0, 0, 0, 0, 0.25, 1, 2, 3.25, 4.5, 5, 4.5, 3.25, 2, 1, 0.5, 0.25, 0, 0, 0, 0, 0, 0]  
-generation_profile = np.array(generation).reshape(-1, 1) /50
-print(generation_profile)
-
 class BinaryPSO:
     def __init__(self, n_particles, dimensions, objective_func, max_iter=100):
         self.n_particles = n_particles
@@ -56,6 +46,11 @@ class BinaryPSO:
                     self.particles_position[i, d] = 1
                 else:
                     self.particles_position[i, d] = 0
+
+            # probabilities = self.sigmoid(self.velocity[i])
+            # selected_bit = np.random.choice(self.dimensions, p=probabilities/np.sum(probabilities))
+            # self.particles_position[i] = 0  # Set all bits to 0
+            # self.particles_position[i, selected_bit] = 1  # Set the selected bit to 1
 
     def evaluate(self):
         for i in range(self.n_particles):
@@ -108,67 +103,47 @@ def check_constraints(result):
 # Objective function considering generation and load profiles
 def objective_function(x):
     total_power_losses = 0
-    for hour in range(24):  # Assuming 24 hours for daily profiles
-        ppc_temp = deepcopy(ppc)
+    # for hour in range(24):  # Assuming 24 hours for daily profiles
+    ppc_temp = deepcopy(ppc)
 
-        # Adjust load and subtract generation for the current hour at each bus
-        for bus_idx in load_bus_indices:
-            load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour])
-            # load_change = load_profile[hour]
-            generation_change = 0
-            # If this bus is allowed to have generation, subtract the generation profile
-            if x[bus_idx] == 1:
-                generation_change = generation_profile[hour]  # Assuming same generation profile for all buses with generation
-            net_load = load_change - generation_change
-            ppc_temp['bus'][bus_idx, 2] = net_load
+    # Adjust load and subtract generation for the current hour at each bus
+    for bus_idx in load_bus_indices:
+        load_change = ppc_temp['bus'][bus_idx, 2] #* (load_profile[hour])
+        # load_change = load_profile[hour]
+        generation_change = 0
+        # If this bus is allowed to have generation, subtract the generation profile
+        if x[bus_idx] == 1:
+            generation_change = 0.2 #generation_profile[hour]  # Assuming same generation profile for all buses with generation
+        net_load = load_change - generation_change
+        ppc_temp['bus'][bus_idx, 2] = net_load
 
-        # Run power flow
-        result, success = runpf(ppc_temp, ppopt)
-        
-        # Calculate power losses
-        if success and check_constraints(result):
-            power_losses = sum(result['branch'][:, 13])  # Sum of real power losses in all branches
-            total_power_losses += power_losses
-        else:
-            # Return a large number if constraints are violated or power flow fails
-            return float('inf') 
-    
+    # Run power flow
+    result, success = runpf(ppc_temp, ppopt)
+
+    # Calculate power losses
+    if success and check_constraints(result):
+        power_losses = sum(result['branch'][:, 13] + result['branch'][:, 15])  # Sum of real power losses in all branches
+        total_power_losses += power_losses
+    else:
+        # Return a large number if constraints are violated or power flow fails
+        return float('inf') 
+    # print(power_losses)
+    print(x)
     return total_power_losses
 
 
 # PSO parameters
-n_particles = 10
+n_particles = 50
 dimensions = len(load_bus_indices)
 max_iter = 500
-n_runs = 10
-bus_frequency = np.zeros(dimensions)  # Added: Track the frequency of each bus being selected for PV installation
 
-# Record the best positions and values for each run
-all_best_positions = []
-all_best_values = []
-all_gbest_values = []
+bpso = BinaryPSO(n_particles, dimensions, objective_function, max_iter)
+best_position, best_value = bpso.run(max_iter)
 
-for _ in range(n_runs):
-    bpso = BinaryPSO(n_particles, dimensions, objective_function, max_iter)
-    best_position, best_value = bpso.run(max_iter)
-    print(best_position, best_value)
-    all_best_positions.append(best_position)
-    all_best_values.append(best_value)
-    all_gbest_values.append(bpso.gbest_value_history)  # Update this line to append the gbest_value_history
+print("Best Positions from all runs:\n", best_position)
+print("Best Values from all runs:\n", best_value)
+bpso.plot_convergence_curve()
 
-     
-    # Increment the frequency for the buses where PV is installed in the best position of this run
-    bus_frequency += best_position
-
-
-print("Best Positions from all runs:\n", all_best_positions)
-print("Best Values from all runs:\n", all_best_values)
-
-# Find the overall best solution
-best_of_best_index = np.argmin(all_best_values)
-overall_best_position = all_best_positions[best_of_best_index]
-print("Overall Best Position:", overall_best_position)
-print("With a loss value of:", all_best_values[best_of_best_index])
 
 total_losses = []
 total_losses_without_pv = []
@@ -177,35 +152,26 @@ total_load_consumption_without_pv = []
 voltage_profiles = [[] for _ in range(len(ppc['bus']))]
 voltage_profiles_without_pv = [[] for _ in range(len(ppc['bus']))]
 
-for hour in range(hours):
-    ppc_temp = deepcopy(ppc)
-    for bus_idx in load_bus_indices:
-        load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour])
-        # load_change = load_profile[hour]
-        load_change_without_pv = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour])
-        # load_change_without_pv = load_profile[hour]
-        ppc['bus'][bus_idx, 2] = load_change_without_pv
-        generation_change = 0
-        if overall_best_position[bus_idx] == 1:
-            generation_change = generation_profile[hour]
-        net_load = load_change - generation_change
-        ppc_temp['bus'][bus_idx, 2] = net_load
-    # Run power flow
-    result, _ = runpf(ppc_temp, ppopt)
-    result_without_pv, _ = runpf(ppc, ppopt)
+ppc_temp = deepcopy(ppc)
+for bus_idx in load_bus_indices:
+    load_change = ppc_temp['bus'][bus_idx, 2] 
+    # load_change = load_profile[hour]
+    # load_change_without_pv = ppc_temp['bus'][bus_idx, 2]
+    # load_change_without_pv = load_profile[hour]
+    # ppc['bus'][bus_idx, 2] = load_change_without_pv
+    generation_change = 0
+    if best_position[bus_idx] == 1:
+        generation_change = 0.2
+    net_load = load_change - generation_change
+    ppc_temp['bus'][bus_idx, 2] = net_load
+# Run power flow
+result, _ = runpf(ppc_temp, ppopt)
+# result_without_pv, _ = runpf(ppc, ppopt)
+# Store voltage values
+for bus_idx in load_bus_indices:
+    voltage_profiles[bus_idx].append(result['bus'][bus_idx, 7])
+    # voltage_profiles_without_pv[bus_idx].append(result_without_pv['bus'][bus_idx, 7])
 
-    # Store voltage values
-    for bus_idx in load_bus_indices:
-        voltage_profiles[bus_idx].append(result['bus'][bus_idx, 7])
-        voltage_profiles_without_pv[bus_idx].append(result_without_pv['bus'][bus_idx, 7])
-
-    # Sum the real power losses in all branches
-    losses = sum(result['branch'][:, 13] + result['branch'][:, 15])
-    losses_without_pv = sum(result_without_pv['branch'][:, 13] + result_without_pv['branch'][:, 15])
-    total_losses.append(losses)
-    total_losses_without_pv.append(losses_without_pv)
-    total_load_consumption.append(net_load)
-    total_load_consumption_without_pv.append(load_change_without_pv)
 
 
 # Heatmap for Bus Voltage Profiles Over Time
@@ -226,13 +192,3 @@ plt.grid(True)
 plt.xticks(range(1, 34))  # Assuming bus numbers are 1-indexed
 plt.show()
 
-
-plt.figure(figsize=(10, 6))
-for run_number, gbest_values in enumerate(all_gbest_values):
-    plt.plot(gbest_values, label=f'Run {run_number + 1}')
-plt.title("BPSO Convergence Curves for All Runs")
-plt.xlabel('Iteration')
-plt.ylabel('Best Fitness Value')
-plt.legend()
-plt.grid(True)
-plt.show()
