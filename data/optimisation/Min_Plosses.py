@@ -156,17 +156,12 @@ all_gbest_values = []
 for _ in range(n_runs):
     bpso = BinaryPSO(n_particles, dimensions, objective_function, max_iter)
     best_position, best_value = bpso.run(max_iter)
-    print(best_position, best_value)
     all_best_positions.append(best_position)
     all_best_values.append(best_value)
     all_gbest_values.append(bpso.gbest_value_history)  # Update this line to append the gbest_value_history
 
     # Increment the frequency for the buses where PV is installed in the best position of this run
     bus_frequency += best_position
-
-
-print("Best Positions from all runs:\n", all_best_positions)
-print("Best Values from all runs:\n", all_best_values)
 
 # Find the overall best solution
 best_of_best_index = np.argmin(all_best_values)
@@ -244,16 +239,50 @@ plt.show()
 plt.figure(figsize=(15, 7))
 plt.plot(np.arange(hours), total_load_consumption, label='Total Load', color='blue')
 plt.plot(np.arange(hours), total_load_consumption_without_pv, label='Load without PV', color='red')
-plt.plot(np.arange(hours), total_losses, label='Total losses', color='blue', linestyle='--' )
-plt.plot(np.arange(hours), total_losses_without_pv, label='Losses without PV', color='red', linestyle='--')
-
-plt.title('Time Series of Load, Load without PV, and PV Generation')
+plt.title('Time Series of Load with and without PV')
 plt.xlabel('Hour of the Day')
-plt.ylabel('Load / Generation')
+plt.ylabel('Power kW')
 plt.xticks(np.arange(hours))
 plt.grid(True)
 plt.legend()
 plt.show()
+
+
+# Plotting the time series
+plt.figure(figsize=(15, 7))
+plt.plot(np.arange(hours), total_losses, label='Total losses', color='blue', linestyle='--' )
+plt.plot(np.arange(hours), total_losses_without_pv, label='Losses without PV', color='red', linestyle='--')
+
+plt.title('Total losses')
+plt.xlabel('Hour of the Day')
+plt.ylabel('Energy kWh')
+plt.xticks(np.arange(hours))
+plt.grid(True)
+plt.legend()
+plt.show()
+
+# Creating a figure with two subplots side by side
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
+
+# Plotting the loads on the left subplot (ax1)
+ax1.plot(np.arange(hours), total_load_consumption, label='Total Load', color='blue')
+ax1.plot(np.arange(hours), total_load_consumption_without_pv, label='Load without PV', color='red')
+ax1.set_ylabel('Load (kW)')
+ax1.set_xlabel('Time (Hours)')
+ax1.set_title('Load')
+ax1.legend()
+
+# Plotting the losses on the right subplot (ax2)
+ax2.plot(np.arange(hours), total_losses, label='Total losses', color='blue', linestyle='--')
+ax2.plot(np.arange(hours), total_losses_without_pv, label='Losses without PV', color='red', linestyle='--')
+ax2.set_ylabel('Energy (kWh)')
+ax2.set_xlabel('Time (hours)')
+ax2.set_title('Losses')
+ax2.legend()
+
+# Display the plots
+plt.show()
+
 
 plt.figure(figsize=(10, 6))
 for run_number, gbest_values in enumerate(all_gbest_values):
