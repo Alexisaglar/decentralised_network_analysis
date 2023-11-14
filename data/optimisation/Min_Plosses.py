@@ -4,6 +4,7 @@ from pypower.api import case33bw, runpf, ppoption
 from pyswarms.discrete import BinaryPSO
 from copy import deepcopy
 import seaborn as sns
+from joblib import Parallel, delayed
 
 # Load case
 ppc = case33bw()
@@ -21,7 +22,7 @@ load_profile = np.array(load).reshape(-1, 1)
 print(load_profile)
 
 generation = [0, 0, 0, 0, 0, 0, 0.25, 1, 2, 3.25, 4.5, 5, 4.5, 3.25, 2, 1, 0.5, 0.25, 0, 0, 0, 0, 0, 0]  
-generation_profile = np.array(generation).reshape(-1, 1) /50
+generation_profile = np.array(generation).reshape(-1, 1) /80
 print(generation_profile)
 
 class BinaryPSO:
@@ -60,12 +61,14 @@ class BinaryPSO:
     def evaluate(self):
         for i in range(self.n_particles):
             fitness = self.objective_func(self.particles_position[i])
+            # fitnesses = Parallel(n_jobs=-1)(delayed(self.objective_func)(position) for position in self.particles_position)
+            # for i, fitness in enumerate(fitnesses):
             if fitness < self.pbest_value[i]:
                 self.pbest_value[i] = fitness
                 self.pbest_position[i] = self.particles_position[i].copy()
             if fitness < self.gbest_value:
                 self.gbest_value = fitness
-                self.gbest_position = self.particles_position[i].copy()
+            self.gbest_position = self.particles_position[i].copy()
         self.gbest_value_history.append(self.gbest_value)  # Update history
 
 
@@ -110,10 +113,10 @@ def objective_function(x):
     total_power_losses = 0
     for hour in range(24):  # Assuming 24 hours for daily profiles
         ppc_temp = deepcopy(ppc)
-
         # Adjust load and subtract generation for the current hour at each bus
         for bus_idx in load_bus_indices:
             load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour])
+            reactive_change = ppc_temp['bus'][bus_idx, 3] * (load_profile[hour])
             # load_change = load_profile[hour]
             generation_change = 0
             # If this bus is allowed to have generation, subtract the generation profile
@@ -121,14 +124,16 @@ def objective_function(x):
                 generation_change = generation_profile[hour]  # Assuming same generation profile for all buses with generation
             net_load = load_change - generation_change
             ppc_temp['bus'][bus_idx, 2] = net_load
-
+            ppc_temp['bus'][bus_idx, 3] = reactive_change
+            
         # Run power flow
         result, success = runpf(ppc_temp, ppopt)
         
         # Calculate power losses
         if success and check_constraints(result):
-            power_losses = sum(result['branch'][:, 13])  # Sum of real power losses in all branches
+            power_losses = sum(result['branch'][:, 13] + result['branch'][:, 15])  # Sum of real power losses in all branches
             total_power_losses += power_losses
+            
         else:
             # Return a large number if constraints are violated or power flow fails
             return float('inf') 
@@ -140,7 +145,7 @@ def objective_function(x):
 n_particles = 10
 dimensions = len(load_bus_indices)
 max_iter = 500
-n_runs = 10
+n_runs = 1
 bus_frequency = np.zeros(dimensions)  # Added: Track the frequency of each bus being selected for PV installation
 
 # Record the best positions and values for each run
@@ -156,7 +161,6 @@ for _ in range(n_runs):
     all_best_values.append(best_value)
     all_gbest_values.append(bpso.gbest_value_history)  # Update this line to append the gbest_value_history
 
-     
     # Increment the frequency for the buses where PV is installed in the best position of this run
     bus_frequency += best_position
 
@@ -174,25 +178,30 @@ total_losses = []
 total_losses_without_pv = []
 total_load_consumption = []
 total_load_consumption_without_pv = []
+total_load = []
+total_load_without_pv = []
 voltage_profiles = [[] for _ in range(len(ppc['bus']))]
 voltage_profiles_without_pv = [[] for _ in range(len(ppc['bus']))]
 
 for hour in range(hours):
-    ppc_temp = deepcopy(ppc)
+    ppc_pv = deepcopy(ppc)
+    ppc_without_pv = deepcopy(ppc)
     for bus_idx in load_bus_indices:
-        load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour])
-        # load_change = load_profile[hour]
-        load_change_without_pv = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour])
-        # load_change_without_pv = load_profile[hour]
-        ppc['bus'][bus_idx, 2] = load_change_without_pv
         generation_change = 0
+        load_change = ppc_pv['bus'][bus_idx, 2] * (load_profile[hour])
+        load_change_without_pv = ppc_pv['bus'][bus_idx, 2] * (load_profile[hour])
+        reactive_change = ppc_pv['bus'][bus_idx, 3] * (load_profile[hour])
+        ppc_without_pv['bus'][bus_idx, 2] = load_change_without_pv
+        ppc_without_pv['bus'][bus_idx, 3] = reactive_change
         if overall_best_position[bus_idx] == 1:
             generation_change = generation_profile[hour]
         net_load = load_change - generation_change
-        ppc_temp['bus'][bus_idx, 2] = net_load
+        ppc_pv['bus'][bus_idx, 2] = net_load
+        ppc_pv['bus'][bus_idx, 3] = reactive_change
     # Run power flow
-    result, _ = runpf(ppc_temp, ppopt)
-    result_without_pv, _ = runpf(ppc, ppopt)
+
+    result, _ = runpf(ppc_pv, ppopt)
+    result_without_pv, _ = runpf(ppc_without_pv, ppopt)
 
     # Store voltage values
     for bus_idx in load_bus_indices:
@@ -200,13 +209,18 @@ for hour in range(hours):
         voltage_profiles_without_pv[bus_idx].append(result_without_pv['bus'][bus_idx, 7])
 
     # Sum the real power losses in all branches
+
+    total_load = (sum(ppc_pv['bus'][:,2]))
+    total_load_without_pv = (sum(ppc_without_pv['bus'][:,2]))
+    total_load_consumption.append(total_load)
+    total_load_consumption_without_pv.append(total_load_without_pv)
+    # Total losses calculation
     losses = sum(result['branch'][:, 13] + result['branch'][:, 15])
     losses_without_pv = sum(result_without_pv['branch'][:, 13] + result_without_pv['branch'][:, 15])
     total_losses.append(losses)
-    total_losses_without_pv.append(losses_without_pv)
-    total_load_consumption.append(net_load)
-    total_load_consumption_without_pv.append(load_change_without_pv)
-
+    total_losses_without_pv.append(losses_without_pv) 
+print('Total losses without PV:\n', sum(total_losses_without_pv))
+print('Total losses with PV:\n', sum(total_losses))
 
 # Heatmap for Bus Voltage Profiles Over Time
 plt.figure(figsize=(15, 9))
@@ -226,6 +240,20 @@ plt.grid(True)
 plt.xticks(range(1, 34))  # Assuming bus numbers are 1-indexed
 plt.show()
 
+# Plotting the time series
+plt.figure(figsize=(15, 7))
+plt.plot(np.arange(hours), total_load_consumption, label='Total Load', color='blue')
+plt.plot(np.arange(hours), total_load_consumption_without_pv, label='Load without PV', color='red')
+plt.plot(np.arange(hours), total_losses, label='Total losses', color='blue', linestyle='--' )
+plt.plot(np.arange(hours), total_losses_without_pv, label='Losses without PV', color='red', linestyle='--')
+
+plt.title('Time Series of Load, Load without PV, and PV Generation')
+plt.xlabel('Hour of the Day')
+plt.ylabel('Load / Generation')
+plt.xticks(np.arange(hours))
+plt.grid(True)
+plt.legend()
+plt.show()
 
 plt.figure(figsize=(10, 6))
 for run_number, gbest_values in enumerate(all_gbest_values):
