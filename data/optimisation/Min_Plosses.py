@@ -22,7 +22,7 @@ load_profile = np.array(load).reshape(-1, 1)
 print(load_profile)
 
 generation = [0, 0, 0, 0, 0, 0, 0.25, 1, 2, 3.25, 4.5, 5, 4.5, 3.25, 2, 1, 0.5, 0.25, 0, 0, 0, 0, 0, 0]  
-generation_profile = np.array(generation).reshape(-1, 1) /80
+generation_profile = np.array(generation).reshape(-1, 1) /50
 print(generation_profile)
 
 class BinaryPSO:
@@ -271,14 +271,16 @@ ax1.set_ylabel('Load (kW)')
 ax1.set_xlabel('Time (Hours)')
 ax1.set_title('Load')
 ax1.legend()
+ax1.grid(True)
 
 # Plotting the losses on the right subplot (ax2)
 ax2.plot(np.arange(hours), total_losses, label='Total losses', color='blue', linestyle='--')
 ax2.plot(np.arange(hours), total_losses_without_pv, label='Losses without PV', color='red', linestyle='--')
-ax2.set_ylabel('Energy (kWh)')
+ax2.set_ylabel('Energy (MWh)')
 ax2.set_xlabel('Time (hours)')
 ax2.set_title('Losses')
 ax2.legend()
+ax2.grid(True)
 
 # Display the plots
 plt.show()
