@@ -1,3 +1,4 @@
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from pypower.api import case33bw, runpf, ppoption
@@ -5,6 +6,8 @@ from pyswarms.discrete import BinaryPSO
 from copy import deepcopy
 import seaborn as sns
 from joblib import Parallel, delayed
+
+
 
 # Load case
 ppc = case33bw()
@@ -15,15 +18,19 @@ ppopt = ppoption(PF_ALG=1, VERBOSE=0, OUT_ALL=0)
 # Get load bus indices (all buses are load buses in case33bw)
 load_bus_indices = np.arange(len(ppc['bus']))
 
+
 # Create Generation and Load Profiles (example, replace with actual data)
-hours = 24
+hours = 24  
 load = [0.1, 0.18, 0.2, 0.18, 0.15, 0.24, 0.5, 0.6, 0.55, 0.48, 0.45, 0.42, 0.4, 0.4, 0.5, 0.6, 0.8, 0.85, 1, 0.85, 0.7, 0.6, 0.3, 0.2] 
 load_profile = np.array(load).reshape(-1, 1) 
 print(load_profile)
 
-generation = [0, 0, 0, 0, 0, 0, 0.25, 1, 2, 3.25, 4.5, 5, 4.5, 3.25, 2, 1, 0.5, 0.25, 0, 0, 0, 0, 0, 0]  
-generation_profile = np.array(generation).reshape(-1, 1) /50
-print(generation_profile)
+generation = pd.read_csv('~/decentralised_network_analysis/data/optimisation/hourly_Jan.csv')
+# generation = [0, 0, 0, 0, 0, 0, 0.25, 1, 2, 3.25, 4.5, 5, 4.5, 3.25, 2, 1, 0.5, 0.25, 0, 0, 0, 0, 0, 0]  
+generation_profile_silicon = np.array(generation['P']).reshape(-1, 1) /50000
+generation_profile_LLE = np.array(generation['P_CFPV']).reshape(-1, 1) /50000
+print(generation_profile_silicon)
+print(generation_profile_LLE)
 
 class BinaryPSO:
     def __init__(self, n_particles, dimensions, objective_func, max_iter=100):
@@ -121,7 +128,7 @@ def objective_function(x):
             generation_change = 0
             # If this bus is allowed to have generation, subtract the generation profile
             if x[bus_idx] == 1:
-                generation_change = generation_profile[hour]  # Assuming same generation profile for all buses with generation
+                generation_change = generation_profile_silicon[hour]  # Assuming same generation profile for all buses with generation
             net_load = load_change - generation_change
             ppc_temp['bus'][bus_idx, 2] = net_load
             ppc_temp['bus'][bus_idx, 3] = reactive_change
@@ -142,7 +149,7 @@ def objective_function(x):
 
 
 # PSO parameters
-n_particles = 10
+n_particles = 30
 dimensions = len(load_bus_indices)
 max_iter = 500
 n_runs = 1
@@ -163,66 +170,154 @@ for _ in range(n_runs):
     # Increment the frequency for the buses where PV is installed in the best position of this run
     bus_frequency += best_position
 
+def evaluate_losses_for_profile(x, generation_profile):
+    total_power_losses = 0
+    for hour in range(24):  # Assuming 24 hours for daily profiles
+        ppc_temp = deepcopy(ppc)
+        # Adjust load and subtract generation for the current hour at each bus
+        for bus_idx in load_bus_indices:
+            load_change = ppc_temp['bus'][bus_idx, 2] * (load_profile[hour])
+            reactive_change = ppc_temp['bus'][bus_idx, 3] * (load_profile[hour])
+            # load_change = load_profile[hour]
+            generation_change = 0
+            # If this bus is allowed to have generation, subtract the generation profile
+            if x[bus_idx] == 1:
+                generation_change = generation_profile[hour]  # Assuming same generation profile for all buses with generation
+            net_load = load_change - generation_change
+            ppc_temp['bus'][bus_idx, 2] = net_load
+            ppc_temp['bus'][bus_idx, 3] = reactive_change
+            
+        # Run power flow
+        result, success = runpf(ppc_temp, ppopt)
+        
+        # Calculate power losses
+        if success and check_constraints(result):
+            power_losses = sum(result['branch'][:, 13] + result['branch'][:, 15])  # Sum of real power losses in all branches
+            total_power_losses += power_losses
+            
+        else:
+            # Return a large number if constraints are violated or power flow fails
+            return float('inf') 
+    
+    return total_power_losses
+
+total_losses_silicon = evaluate_losses_for_profile(best_position, generation_profile_silicon)
+total_losses_LLE = evaluate_losses_for_profile(best_position, generation_profile_LLE)
+
+# Now you can compare total_losses_silicon and total_losses_LLE
+print("Total losses with Silicon profile:", total_losses_silicon)
+print("Total losses with LLE profile:", total_losses_LLE)
+
+
 # Find the overall best solution
 best_of_best_index = np.argmin(all_best_values)
 overall_best_position = all_best_positions[best_of_best_index]
 print("Overall Best Position:", overall_best_position)
 print("With a loss value of:", all_best_values[best_of_best_index])
 
-total_losses = []
+total_losses_Si_PV = []
+total_losses_LLE = []
 total_losses_without_pv = []
-total_load_consumption = []
+
+total_load_consumption_Si_PV = []
+total_load_consumption_LLE = []
 total_load_consumption_without_pv = []
-total_load = []
+
+total_load_Si_PV = []
+total_load_LLE = []
 total_load_without_pv = []
-voltage_profiles = [[] for _ in range(len(ppc['bus']))]
+
+voltage_profiles_Si_PV = [[] for _ in range(len(ppc['bus']))]
+voltage_profiles_LLE = [[] for _ in range(len(ppc['bus']))]
 voltage_profiles_without_pv = [[] for _ in range(len(ppc['bus']))]
 
 for hour in range(hours):
-    ppc_pv = deepcopy(ppc)
+    ppc_Si_PV = deepcopy(ppc)
     ppc_without_pv = deepcopy(ppc)
+    ppc_LLE_PV = deepcopy(ppc)
     for bus_idx in load_bus_indices:
-        generation_change = 0
-        load_change = ppc_pv['bus'][bus_idx, 2] * (load_profile[hour])
-        load_change_without_pv = ppc_pv['bus'][bus_idx, 2] * (load_profile[hour])
-        reactive_change = ppc_pv['bus'][bus_idx, 3] * (load_profile[hour])
+        generation_change_Si_PV = 0
+        generation_change_LLE_PV = 0
+        load_change = ppc_without_pv['bus'][bus_idx, 2] * (load_profile[hour])
+        load_change_without_pv = ppc_without_pv['bus'][bus_idx, 2] * (load_profile[hour])
+        reactive_change = ppc_without_pv['bus'][bus_idx, 3] * (load_profile[hour])
+        if overall_best_position[bus_idx] == 1:
+            generation_change_Si_PV= generation_profile_silicon[hour]
+            generation_change_LLE_PV = generation_profile_LLE[hour]
+
+        # Make changes of values in data without PV
         ppc_without_pv['bus'][bus_idx, 2] = load_change_without_pv
         ppc_without_pv['bus'][bus_idx, 3] = reactive_change
-        if overall_best_position[bus_idx] == 1:
-            generation_change = generation_profile[hour]
-        net_load = load_change - generation_change
-        ppc_pv['bus'][bus_idx, 2] = net_load
-        ppc_pv['bus'][bus_idx, 3] = reactive_change
+        
+        #Calculate net load for different PV profiles
+        net_load_LLE = load_change - generation_change_LLE_PV
+        net_load_Si_PV = load_change - generation_change_Si_PV
+
+        # Make changes in active and reactive power for Si-PV values
+        ppc_Si_PV['bus'][bus_idx, 2] = net_load_Si_PV
+        ppc_Si_PV['bus'][bus_idx, 3] = reactive_change
+
+        # Make changes in active and reactive power for Si-PV values
+        ppc_LLE_PV['bus'][bus_idx, 2] = net_load_LLE 
+        ppc_LLE_PV['bus'][bus_idx, 3] = reactive_change
     # Run power flow
 
-    result, _ = runpf(ppc_pv, ppopt)
+    result_LLE_PV, _ = runpf(ppc_LLE_PV, ppopt)
+    result_Si_PV, _ = runpf(ppc_Si_PV, ppopt)
     result_without_pv, _ = runpf(ppc_without_pv, ppopt)
 
     # Store voltage values
     for bus_idx in load_bus_indices:
-        voltage_profiles[bus_idx].append(result['bus'][bus_idx, 7])
+        voltage_profiles_Si_PV[bus_idx].append(result_Si_PV['bus'][bus_idx, 7])
+        voltage_profiles_LLE[bus_idx].append(result_LLE_PV['bus'][bus_idx, 7])
         voltage_profiles_without_pv[bus_idx].append(result_without_pv['bus'][bus_idx, 7])
 
     # Sum the real power losses in all branches
 
-    total_load = (sum(ppc_pv['bus'][:,2]))
+    total_load_Si_PV = (sum(ppc_Si_PV['bus'][:,2]))
+    total_load_LLE = (sum(ppc_LLE_PV['bus'][:,2]))
     total_load_without_pv = (sum(ppc_without_pv['bus'][:,2]))
-    total_load_consumption.append(total_load)
+
+    total_load_consumption_Si_PV.append(total_load_Si_PV)
+    total_load_consumption_LLE.append(total_load_LLE)
     total_load_consumption_without_pv.append(total_load_without_pv)
+
     # Total losses calculation
-    losses = sum(result['branch'][:, 13] + result['branch'][:, 15])
+    losses_Si_PV = sum(result_Si_PV['branch'][:, 13] + result_Si_PV['branch'][:, 15])
+    losses_LLE = sum(result_LLE_PV['branch'][:, 13] + result_LLE_PV['branch'][:, 15])
     losses_without_pv = sum(result_without_pv['branch'][:, 13] + result_without_pv['branch'][:, 15])
-    total_losses.append(losses)
+
+    total_losses_Si_PV.append(losses_Si_PV)
+    total_losses_LLE.append(losses_LLE)
     total_losses_without_pv.append(losses_without_pv) 
+
 print('Total losses without PV:\n', sum(total_losses_without_pv))
-print('Total losses with PV:\n', sum(total_losses))
+print('Total losses with Si-PV:\n', sum(total_losses_Si_PV))
+print('Total losses with LLE-PV:\n', sum(total_losses_LLE))
+
+# Creating a figure with two subplots side by side
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 7))
 
 # Heatmap for Bus Voltage Profiles Over Time
-plt.figure(figsize=(15, 9))
-sns.heatmap(voltage_profiles, cmap="viridis")
-plt.title('Voltage Profiles for 33 Buses Over 24 Hours')
-plt.xlabel('Hour of the Day')
-plt.ylabel('Bus Number')
+sns.heatmap(voltage_profiles_Si_PV, cmap="viridis", ax=ax1)
+ax1.set_xlabel('Hour of the Day')
+ax1.set_ylabel('Bus number')
+ax1.set_title('Voltage Profile with Si-PV')
+ax1.legend()
+
+# Heatmap for Bus Voltage Profiles Over Time
+sns.heatmap(voltage_profiles_LLE, cmap="viridis", ax=ax2)
+ax2.set_xlabel('Hour of the Day')
+ax2.set_ylabel('Bus number')
+ax2.set_title('Voltage Profile with LLE-PV')
+ax2.legend()
+
+# Heatmap for Bus Voltage Profiles Over Time
+sns.heatmap(voltage_profiles_without_pv, cmap="viridis", ax=ax3)
+ax3.set_xlabel('Hour of the Day')
+ax3.set_ylabel('Bus number')
+ax3.set_title('Voltage Profile without PV')
+ax3.legend()
 plt.show()
 
 # Bar Chart for Frequency of Bus Selection for PV Generation
@@ -235,37 +330,12 @@ plt.grid(True)
 plt.xticks(range(1, 34))  # Assuming bus numbers are 1-indexed
 plt.show()
 
-# Plotting the time series
-plt.figure(figsize=(15, 7))
-plt.plot(np.arange(hours), total_load_consumption, label='Total Load', color='blue')
-plt.plot(np.arange(hours), total_load_consumption_without_pv, label='Load without PV', color='red')
-plt.title('Time Series of Load with and without PV')
-plt.xlabel('Hour of the Day')
-plt.ylabel('Power kW')
-plt.xticks(np.arange(hours))
-plt.grid(True)
-plt.legend()
-plt.show()
-
-
-# Plotting the time series
-plt.figure(figsize=(15, 7))
-plt.plot(np.arange(hours), total_losses, label='Total losses', color='blue', linestyle='--' )
-plt.plot(np.arange(hours), total_losses_without_pv, label='Losses without PV', color='red', linestyle='--')
-
-plt.title('Total losses')
-plt.xlabel('Hour of the Day')
-plt.ylabel('Energy kWh')
-plt.xticks(np.arange(hours))
-plt.grid(True)
-plt.legend()
-plt.show()
-
 # Creating a figure with two subplots side by side
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
 
 # Plotting the loads on the left subplot (ax1)
-ax1.plot(np.arange(hours), total_load_consumption, label='Total Load', color='blue')
+ax1.plot(np.arange(hours), total_load_consumption_Si_PV, label='Total Load with Si-PV', color='blue')
+ax1.plot(np.arange(hours), total_load_consumption_LLE, label='Total Load with LLE-PV', color='green')
 ax1.plot(np.arange(hours), total_load_consumption_without_pv, label='Load without PV', color='red')
 ax1.set_ylabel('Load (kW)')
 ax1.set_xlabel('Time (Hours)')
@@ -274,9 +344,10 @@ ax1.legend()
 ax1.grid(True)
 
 # Plotting the losses on the right subplot (ax2)
-ax2.plot(np.arange(hours), total_losses, label='Total losses', color='blue', linestyle='--')
-ax2.plot(np.arange(hours), total_losses_without_pv, label='Losses without PV', color='red', linestyle='--')
-ax2.set_ylabel('Energy (MWh)')
+ax2.plot(np.arange(hours), total_losses_without_pv, label='Total losses', color='red', linestyle='--')
+ax2.plot(np.arange(hours), total_losses_Si_PV, label='Losses with Si-PV', color='blue', linestyle='--')
+ax2.plot(np.arange(hours), total_losses_LLE, label='Losses with LLE-PV', color='green', linestyle='--')
+ax2.set_ylabel('Power Loss (MW)')
 ax2.set_xlabel('Time (hours)')
 ax2.set_title('Losses')
 ax2.legend()
