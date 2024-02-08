@@ -10,7 +10,7 @@ kelvin_temperature = 273.15
 latitude = "56"
 longitude = "-1.6"
 altitude = "-999." #default as mentioned in lib
-date_period = '2022-01-01/2023-01-01'
+date_period = '2021-01-01/2022-01-01'
 resolution = "1minute"
 
 def get_database_info(database):
